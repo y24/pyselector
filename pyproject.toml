@@ -20,3 +20,5 @@ include = ["pyselector*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+addopts = "--basetemp=_caches/pytest-cache-files"
+cache_dir = "_caches/.pytest_cache"
