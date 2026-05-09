@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+import sys
 from argparse import Namespace
 from typing import Any
 
@@ -58,7 +60,7 @@ def run_inspect(args: Namespace) -> int:
         win32=_find_backend(inspections, "win32"),
         uia=_find_backend(inspections, "uia"),
     )
-    print(format_inspection_result(result, args.detail), end="")
+    print(format_inspection_result(result, args.detail, _use_color()), end="")
     return 0 if any(item.status == "success" for item in inspections) else 1
 
 
@@ -78,7 +80,7 @@ def run_tree(args: Namespace) -> int:
             nodes=nodes,
             reached_limit=reached_limit,
         )
-        print(format_tree_result(result, args.detail), end="")
+        print(format_tree_result(result, args.detail, _use_color()), end="")
         return 0
     except Exception as exc:
         result = TreeResult(
@@ -89,7 +91,7 @@ def run_tree(args: Namespace) -> int:
             status="failed",
             message=str(exc),
         )
-        print(format_tree_result(result, args.detail), end="")
+        print(format_tree_result(result, args.detail, _use_color()), end="")
         return 1
 
 
@@ -110,3 +112,7 @@ def _find_backend(inspections: list[BackendInspection], backend: str) -> Backend
         if inspection.backend == backend:
             return inspection
     return None
+
+
+def _use_color() -> bool:
+    return sys.stdout.isatty() and "NO_COLOR" not in os.environ

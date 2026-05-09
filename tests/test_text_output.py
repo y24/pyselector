@@ -22,6 +22,19 @@ def test_inspection_output_contains_core_sections():
     output = format_inspection_result(result)
 
     assert output.startswith("[INFO] cursor position: X=10, Y=20")
-    assert "[Win32 Backend]" in output
-    assert "rectangle: L=1, T=2, R=11, B=22, W=10, H=20" in output
-    assert "[Selector Candidates - Win32]" in output
+    assert "[Backend]" in output
+    assert "  [Win32]" in output
+    assert "    rectangle: L=1, T=2, R=11, B=22, W=10, H=20" in output
+    assert "[Selector Candidates]" in output
+
+
+def test_inspection_output_can_color_headings():
+    result = InspectionResult(
+        cursor_position=CursorPosition(10, 20),
+        win32=BackendInspection(backend="win32", element=ElementInfo(backend="win32")),
+    )
+
+    output = format_inspection_result(result, color=True)
+
+    assert "\033[1m\033[36m[Target Window]\033[0m" in output
+    assert "\033[94m[Win32]\033[0m" in output

@@ -7,32 +7,45 @@ from pyselector.model.selector_candidate import SelectorEvaluation
 from pyselector.model.target_window import TargetWindowInfo
 from pyselector.output.formatters import format_handle, format_rectangle, format_value, quote_text
 
+RESET = "\033[0m"
+BOLD = "\033[1m"
+CYAN = "\033[36m"
+BRIGHT_BLUE = "\033[94m"
 
-def format_inspection_result(result: InspectionResult, detail: bool = False) -> str:
+
+def format_inspection_result(result: InspectionResult, detail: bool = False, color: bool = False) -> str:
     lines: list[str] = [f"[INFO] cursor position: X={result.cursor_position.x}, Y={result.cursor_position.y}", ""]
     target = _first_target(result)
-    lines.extend(format_target_window(target).splitlines())
+    lines.extend(format_target_window(target, color).splitlines())
     lines.append("")
+    lines.append(_heading("Backend", color, level=1))
     for inspection in _ordered_inspections(result):
-        lines.extend(format_backend_element(inspection).splitlines())
+        lines.extend(format_backend_element(inspection, color).splitlines())
         lines.append("")
+    lines.append(_heading("Hierarchy", color, level=1))
     for inspection in _ordered_inspections(result):
-        lines.extend(format_hierarchy(inspection.backend, inspection.hierarchy, detail, inspection.status, inspection.message).splitlines())
+        lines.extend(
+            format_hierarchy(inspection.backend, inspection.hierarchy, detail, inspection.status, inspection.message, color).splitlines()
+        )
         lines.append("")
+    lines.append(_heading("Selector Candidates", color, level=1))
     for inspection in _ordered_inspections(result):
-        lines.extend(format_selector_candidates(inspection.backend, inspection.evaluations).splitlines())
+        lines.extend(format_selector_candidates(inspection.backend, inspection.evaluations, color).splitlines())
         lines.append("")
-    for inspection in _ordered_inspections(result):
+    snippets = [inspection for inspection in _ordered_inspections(result) if inspection.code_snippet]
+    if snippets:
+        lines.append(_heading("Code Snippet", color, level=1))
+    for inspection in snippets:
         if inspection.code_snippet:
-            lines.extend(format_code_snippet(inspection.backend, inspection.code_snippet).splitlines())
+            lines.extend(format_code_snippet(inspection.backend, inspection.code_snippet, color).splitlines())
             lines.append("")
     return "\n".join(lines).rstrip() + "\n"
 
 
-def format_backend_element(inspection: BackendInspection) -> str:
-    label = "Win32" if inspection.backend == "win32" else "UIA"
+def format_backend_element(inspection: BackendInspection, color: bool = False) -> str:
+    label = _backend_label(inspection.backend)
     if inspection.status != "success" or inspection.element is None:
-        return f"[{label} Backend]\n  status: failed\n  message: {format_value(inspection.message)}"
+        return f"{_heading(label, color, level=2)}\n    status: failed\n    message: {format_value(inspection.message)}"
     element = inspection.element
     fields = [
         ("window_text", element.window_text),
@@ -50,13 +63,13 @@ def format_backend_element(inspection: BackendInspection) -> str:
         ("process_id", element.process_id),
         ("process_name", element.process_name),
     ]
-    return "\n".join([f"[{label} Backend]"] + [f"  {name}: {format_value(value)}" for name, value in fields])
+    return "\n".join([_heading(label, color, level=2)] + [f"    {name}: {format_value(value)}" for name, value in fields])
 
 
-def format_target_window(target_window: TargetWindowInfo | None) -> str:
+def format_target_window(target_window: TargetWindowInfo | None, color: bool = False) -> str:
     return "\n".join(
         [
-            "[Target Window]",
+            _heading("Target Window", color, level=1),
             f"  title: {format_value(target_window.title if target_window else None)}",
             f"  class_name: {format_value(target_window.class_name if target_window else None)}",
             f"  process_name: {format_value(target_window.process_name if target_window else None)}",
@@ -72,14 +85,14 @@ def format_hierarchy(
     detail: bool,
     status: str = "success",
     message: str | None = None,
+    color: bool = False,
 ) -> str:
-    label = "Win32" if backend == "win32" else "UIA"
-    lines = [f"[Hierarchy - {label}]"]
+    lines = [_heading(_backend_label(backend), color, level=2)]
     if status != "success":
-        lines.extend(["  status: failed", f"  message: {format_value(message)}"])
+        lines.extend(["    status: failed", f"    message: {format_value(message)}"])
         return "\n".join(lines)
     if not nodes:
-        lines.append("  status: no hierarchy")
+        lines.append("    status: no hierarchy")
         return "\n".join(lines)
     for node in nodes:
         kind = node.control_type or node.class_name or "Element"
@@ -96,36 +109,38 @@ def format_hierarchy(
             if node.rectangle is not None:
                 attrs.append(f"rectangle={format_rectangle(node.rectangle)}")
         suffix = ("  " + " ".join(attrs)) if attrs else ""
-        lines.append(f"  {node.depth} {kind:<7} {quote_text(node.window_text)}{suffix}")
+        lines.append(f"    {node.depth} {kind:<7} {quote_text(node.window_text)}{suffix}")
     return "\n".join(lines)
 
 
-def format_selector_candidates(backend: str, evaluations: list[SelectorEvaluation]) -> str:
-    label = "Win32" if backend == "win32" else "UIA"
-    lines = [f"[Selector Candidates - {label}]"]
+def format_selector_candidates(backend: str, evaluations: list[SelectorEvaluation], color: bool = False) -> str:
+    lines = [_heading(_backend_label(backend), color, level=2)]
     if not evaluations:
-        lines.append("  status: no candidates")
+        lines.append("    status: no candidates")
         return "\n".join(lines)
     lines.append("")
     for index, evaluation in enumerate(evaluations, 1):
-        lines.append(f"[{index}] hits: {_format_hits(evaluation)}")
-        lines.append(f"    {evaluation.candidate.selector_text}")
+        lines.append(f"    [{index}] hits: {_format_hits(evaluation)}")
+        lines.append(f"        {evaluation.candidate.selector_text}")
         for warning in evaluation.warnings:
-            lines.append(f"    warning: {warning}")
+            lines.append(f"        warning: {warning}")
         lines.append("")
     return "\n".join(lines).rstrip()
 
 
-def format_code_snippet(backend: str, snippet: str) -> str:
-    label = "Win32" if backend == "win32" else "UIA"
-    return f"[Code Snippet - {label}]\n{snippet}"
+def format_code_snippet(backend: str, snippet: str, color: bool = False) -> str:
+    return f"{_heading(_backend_label(backend), color, level=2)}\n{snippet}"
 
 
-def format_tree_result(result: TreeResult, detail: bool = False) -> str:
-    label = "Win32" if result.backend == "win32" else "UIA"
+def format_tree_result(result: TreeResult, detail: bool = False, color: bool = False) -> str:
+    label = _backend_label(result.backend)
     if result.status != "success":
-        return f"[Tree - {label}]\n  status: failed\n  message: {format_value(result.message)}\n"
-    lines = [f"[Tree - {label}]"]
+        return (
+            f"{_heading('Tree', color, level=1)}\n"
+            f"{_heading(label, color, level=2)}\n"
+            f"    status: failed\n    message: {format_value(result.message)}\n"
+        )
+    lines = [_heading("Tree", color, level=1), _heading(label, color, level=2)]
     for node in result.nodes:
         kind = node.control_type or node.class_name or "Element"
         attrs = []
@@ -138,10 +153,23 @@ def format_tree_result(result: TreeResult, detail: bool = False) -> str:
         if detail and node.rectangle is not None:
             attrs.append(f"rectangle={format_rectangle(node.rectangle)}")
         suffix = ("  " + " ".join(attrs)) if attrs else ""
-        lines.append(f"  {node.depth} {kind:<7} {quote_text(node.window_text)}{suffix}")
+        lines.append(f"    {node.depth} {kind:<7} {quote_text(node.window_text)}{suffix}")
     if result.reached_limit:
         lines.append("[WARN] max-items に達したため、以降の要素表示を省略しました。")
     return "\n".join(lines) + "\n"
+
+
+def _heading(text: str, color: bool, level: int) -> str:
+    heading = f"[{text}]"
+    prefix = "  " if level == 2 else ""
+    if not color:
+        return f"{prefix}{heading}"
+    style = f"{BOLD}{CYAN}" if level == 1 else BRIGHT_BLUE
+    return f"{prefix}{style}{heading}{RESET}"
+
+
+def _backend_label(backend: str) -> str:
+    return "Win32" if backend == "win32" else "UIA"
 
 
 def _format_hits(evaluation: SelectorEvaluation) -> str:

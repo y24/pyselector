@@ -99,16 +99,25 @@
 
 セクション見出しは角括弧で囲む。
 
+CLI上では、端末が色表示に対応している場合に大見出しと小見出しへ色を付ける。
+`NO_COLOR` 環境変数が設定されている場合は色を付けない。
+
+Win32 / UIA の両方を持つ情報は、大見出しの下にバックエンド別の小見出しを置く。
+
 ```text
 [Target Window]
-[Win32 Backend]
-[UIA Backend]
-[Hierarchy - Win32]
-[Hierarchy - UIA]
-[Selector Candidates - Win32]
-[Selector Candidates - UIA]
-[Code Snippet - Win32]
-[Code Snippet - UIA]
+[Backend]
+  [Win32]
+  [UIA]
+[Hierarchy]
+  [Win32]
+  [UIA]
+[Selector Candidates]
+  [Win32]
+  [UIA]
+[Code Snippet]
+  [Win32]
+  [UIA]
 ```
 
 ## 4.2 インデント
@@ -119,6 +128,13 @@
 [Target Window]
   title: 電卓
   class_name: ApplicationFrameWindow
+
+[Backend]
+  [Win32]
+    window_text: OK
+
+  [UIA]
+    window_text: 1
 ```
 
 セレクター候補は、番号行の次の行に4スペースで表示する。
@@ -296,7 +312,8 @@ H = B - T
 Win32 Backendで取得した対象要素の情報を表示する。
 
 ```text
-[Win32 Backend]
+[Backend]
+[Win32]
   window_text: OK
   control_type: (None)
   automation_id: (None)
@@ -337,7 +354,8 @@ Win32 Backendで取得した対象要素の情報を表示する。
 UIA Backendで取得した対象要素の情報を表示する。
 
 ```text
-[UIA Backend]
+[Backend]
+[UIA]
   window_text: 1
   control_type: Button
   automation_id: num1Button
@@ -376,7 +394,8 @@ UIA Backendで取得した対象要素の情報を表示する。
 片方のバックエンドで取得に失敗した場合は、以下のように表示する。
 
 ```text
-[Win32 Backend]
+[Backend]
+[Win32]
   status: failed
   message: カーソル下の子要素を取得できませんでした
 ```
@@ -396,10 +415,11 @@ UIA Backendで取得した対象要素の情報を表示する。
 バックエンドごとに階層が異なる場合があるため、Win32とUIAは別々に表示する。
 
 ```text
-[Hierarchy - Win32]
+[Hierarchy]
+[Win32]
 ...
 
-[Hierarchy - UIA]
+[UIA]
 ...
 ```
 
@@ -414,7 +434,8 @@ UIA Backendで取得した対象要素の情報を表示する。
 表示例。
 
 ```text
-[Hierarchy - UIA]
+[Hierarchy]
+[UIA]
   0 Window  "電卓"
   1 Pane    ""
   2 Group   "Number pad"
@@ -424,7 +445,8 @@ UIA Backendで取得した対象要素の情報を表示する。
 Win32の例。
 
 ```text
-[Hierarchy - Win32]
+[Hierarchy]
+[Win32]
   0 Window  "電卓"  class_name="ApplicationFrameWindow"
   1 Pane    ""      class_name="Windows.UI.Core.CoreWindow"
   2 Button  "OK"    class_name="Button" control_id=1
@@ -435,7 +457,8 @@ Win32の例。
 `--detail` 指定時は、必要に応じて追加属性を表示してよい。
 
 ```text
-[Hierarchy - UIA]
+[Hierarchy]
+[UIA]
   0 Window  "電卓"  control_type="Window" class_name="ApplicationFrameWindow" rectangle=L=100,T=100,R=500,B=800
   1 Pane    ""      control_type="Pane" auto_id="MainPanel" rectangle=L=100,T=150,R=500,B=800
   2 Button  "1"     control_type="Button" auto_id="num1Button" rectangle=L=200,T=600,R=250,B=650
@@ -446,7 +469,8 @@ Win32の例。
 親階層を取得できない場合は、以下のように表示する。
 
 ```text
-[Hierarchy - UIA]
+[Hierarchy]
+[UIA]
   status: failed
   message: 親階層を取得できませんでした
 ```
@@ -479,8 +503,8 @@ Win32の例。
 `--backend both` の場合、表示順は以下とする。
 
 ```text
-1. [Selector Candidates - Win32]
-2. [Selector Candidates - UIA]
+1. [Selector Candidates] > [Win32]
+2. [Selector Candidates] > [UIA]
 ```
 
 各バックエンド内の候補表示順は、`04_selector_generation_spec.md` に従う。
@@ -488,7 +512,8 @@ Win32の例。
 ## 9.3 基本表示形式
 
 ```text
-[Selector Candidates - Win32]
+[Selector Candidates]
+[Win32]
 
 [1] hits: 1
     dlg.child_window(control_id=1, class_name="Button")
@@ -501,7 +526,8 @@ Win32の例。
 UIAの例。
 
 ```text
-[Selector Candidates - UIA]
+[Selector Candidates]
+[UIA]
 
 [1] hits: 1
     dlg.child_window(auto_id="num1Button", control_type="Button")
@@ -597,14 +623,16 @@ handleを使用する候補は、常に候補一覧の最後に表示する。
 セレクター候補を生成できない場合は、以下のように表示する。
 
 ```text
-[Selector Candidates - Win32]
+[Selector Candidates]
+[Win32]
   status: no candidates
 ```
 
 または。
 
 ```text
-[Selector Candidates - UIA]
+[Selector Candidates]
+[UIA]
   status: no candidates
 ```
 
@@ -621,7 +649,8 @@ handleを使用する候補は、常に候補一覧の最後に表示する。
 ## 10.2 Win32の表示例
 
 ```text
-[Code Snippet - Win32]
+[Code Snippet]
+[Win32]
 from pywinauto import Desktop
 
 dlg = Desktop(backend="win32").window(title="電卓")
@@ -631,7 +660,8 @@ target = dlg.child_window(control_id=1, class_name="Button")
 ## 10.3 UIAの表示例
 
 ```text
-[Code Snippet - UIA]
+[Code Snippet]
+[UIA]
 from pywinauto import Desktop
 
 dlg = Desktop(backend="uia").window(title="電卓")
@@ -666,7 +696,8 @@ target.set_text("...")
 ## 11.2 表示形式
 
 ```text
-[Tree - Win32]
+[Tree]
+[Win32]
   0 Window  "電卓"  class_name="ApplicationFrameWindow"
   1 Pane    ""      class_name="Windows.UI.Core.CoreWindow"
   2 Button  "OK"    class_name="Button" control_id=1
@@ -676,7 +707,8 @@ target.set_text("...")
 UIAの例。
 
 ```text
-[Tree - UIA]
+[Tree]
+[UIA]
   0 Window  "電卓"  control_type="Window"
   1 Pane    ""      control_type="Pane"
   2 Group   "Number pad" control_type="Group"
@@ -751,7 +783,8 @@ UIAの例。
   process_id: 12345
   handle: 0x2E20F46
 
-[Win32 Backend]
+[Backend]
+[Win32]
   window_text: 電卓
   control_type: (None)
   automation_id: (None)
@@ -767,7 +800,7 @@ UIAの例。
   process_id: 12345
   process_name: CalculatorApp.exe
 
-[UIA Backend]
+[UIA]
   window_text: 1
   control_type: Button
   automation_id: num1Button
@@ -782,13 +815,15 @@ UIAの例。
   process_id: 12345
   process_name: CalculatorApp.exe
 
-[Hierarchy - UIA]
+[Hierarchy]
+[UIA]
   0 Window  "電卓"
   1 Pane    ""
   2 Group   "Number pad"
   3 Button  "1"  auto_id="num1Button"
 
-[Selector Candidates - Win32]
+[Selector Candidates]
+[Win32]
 
 [1] hits: 1
     dlg.child_window(class_name="Windows.UI.Core.CoreWindow")
@@ -797,7 +832,7 @@ UIAの例。
     dlg.window(handle=0x2E20F46)
     warning: handle はアプリ起動ごとに変わる可能性があります
 
-[Selector Candidates - UIA]
+[UIA]
 
 [1] hits: 1
     dlg.child_window(auto_id="num1Button", control_type="Button")
@@ -809,13 +844,14 @@ UIAの例。
     dlg.child_window(control_type="Button")
     warning: 複数要素にヒットします
 
-[Code Snippet - Win32]
+[Code Snippet]
+[Win32]
 from pywinauto import Desktop
 
 dlg = Desktop(backend="win32").window(title="電卓")
 target = dlg.child_window(class_name="Windows.UI.Core.CoreWindow")
 
-[Code Snippet - UIA]
+[UIA]
 from pywinauto import Desktop
 
 dlg = Desktop(backend="uia").window(title="電卓")
@@ -833,8 +869,9 @@ target = dlg.child_window(auto_id="num1Button", control_type="Button")
 特に以下は、ユーザーが目視確認やコピーに使うため、安定させる。
 
 ```text
-[Selector Candidates - Win32]
-[Selector Candidates - UIA]
+[Selector Candidates]
+[Win32]
+[UIA]
 hits:
 warning:
 ```
