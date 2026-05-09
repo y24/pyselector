@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import re
 
 
@@ -11,7 +12,7 @@ def is_blank(value: str | None) -> bool:
 
 
 def escape_python_string(value: str) -> str:
-    return value.encode("unicode_escape").decode("ascii").replace('"', '\\"')
+    return json.dumps(value, ensure_ascii=False)[1:-1]
 
 
 def escape_regex(value: str) -> str:

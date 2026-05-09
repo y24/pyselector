@@ -1,7 +1,8 @@
 from pyselector.model.element_info import ElementInfo
 from pyselector.model.inspection_result import BackendInspection, CursorPosition, InspectionResult
 from pyselector.model.rectangle import RectangleInfo
-from pyselector.output.text_output import format_inspection_result
+from pyselector.model.selector_candidate import SelectorCandidate, SelectorEvaluation
+from pyselector.output.text_output import format_inspection_result, format_selector_candidates
 
 
 def test_inspection_output_contains_core_sections():
@@ -38,3 +39,32 @@ def test_inspection_output_can_color_headings():
 
     assert "\033[1m\033[36m[Target Window]\033[0m" in output
     assert "\033[94m[Win32]\033[0m" in output
+
+
+def test_selector_candidates_output_excludes_zero_hits():
+    zero_hit = SelectorEvaluation(
+        candidate=SelectorCandidate(
+            backend="uia",
+            selector_text='dlg.child_window(auto_id="Header", control_type="Text")',
+            selector_kind="uia_auto_id_control_type",
+            condition={"auto_id": "Header", "control_type": "Text"},
+        ),
+        hits=0,
+        warnings=["この候補では対象要素にヒットしません"],
+    )
+    matched = SelectorEvaluation(
+        candidate=SelectorCandidate(
+            backend="uia",
+            selector_text='dlg.child_window(control_type="Text")',
+            selector_kind="uia_control_type",
+            condition={"control_type": "Text"},
+        ),
+        hits=1,
+    )
+
+    output = format_selector_candidates("uia", [zero_hit, matched])
+
+    assert 'dlg.child_window(auto_id="Header", control_type="Text")' not in output
+    assert "この候補では対象要素にヒットしません" not in output
+    assert "    [1] hits: 1" in output
+    assert 'dlg.child_window(control_type="Text")' in output

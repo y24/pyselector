@@ -10,6 +10,7 @@ from pyselector.backends.win32_inspector import Win32Inspector
 from pyselector.countdown import wait_with_countdown
 from pyselector.cursor import get_cursor_position
 from pyselector.model.inspection_result import BackendInspection, InspectionResult, TreeResult
+from pyselector.model.selector_candidate import SelectorEvaluation
 from pyselector.output.text_output import format_inspection_result, format_tree_result
 from pyselector.selector.evaluator import append_found_index_candidates, evaluate_candidates
 from pyselector.selector.generator import generate_candidates, sort_candidates, deduplicate_candidates
@@ -40,6 +41,7 @@ def run_inspect(args: Namespace) -> int:
             candidates = deduplicate_candidates(sort_candidates(append_found_index_candidates(candidates, evaluations, element)))
             evaluations = evaluate_candidates(candidates, inspector, scope, args.timeout, args.max_items)
             attach_warnings(evaluations, element, args.detail)
+            evaluations = _exclude_unmatched_evaluations(evaluations)
             snippet = build_code_snippet(backend, target_window, evaluations)
             inspections.append(
                 BackendInspection(
@@ -112,6 +114,10 @@ def _find_backend(inspections: list[BackendInspection], backend: str) -> Backend
         if inspection.backend == backend:
             return inspection
     return None
+
+
+def _exclude_unmatched_evaluations(evaluations: list[SelectorEvaluation]) -> list[SelectorEvaluation]:
+    return [evaluation for evaluation in evaluations if evaluation.hits != 0]
 
 
 def _use_color() -> bool:

@@ -38,3 +38,29 @@ def test_uia_candidates_use_auto_id_and_control_type_first():
     assert candidates[0].selector_text == 'dlg.child_window(auto_id="num1Button", control_type="Button")'
     assert candidates[1].selector_text == 'dlg.child_window(title="1", auto_id="num1Button", control_type="Button")'
     assert candidates[4].selector_text == 'dlg.child_window(title_re="^1$", control_type="Button")'
+
+
+def test_selector_text_keeps_japanese_readable():
+    element = ElementInfo(
+        backend="win32",
+        window_text="電卓",
+        class_name="Text",
+    )
+
+    candidates = generate_candidates(element)
+
+    assert candidates[0].selector_text == 'dlg.child_window(title="電卓", class_name="Text")'
+    assert candidates[2].selector_text == 'dlg.child_window(title="電卓")'
+
+
+def test_selector_text_escapes_python_string_syntax():
+    element = ElementInfo(
+        backend="uia",
+        window_text='名前"\\\n',
+        automation_id="nameBox",
+        control_type="Edit",
+    )
+
+    candidates = generate_candidates(element)
+
+    assert candidates[1].selector_text == 'dlg.child_window(title="名前\\"\\\\\\n", auto_id="nameBox", control_type="Edit")'

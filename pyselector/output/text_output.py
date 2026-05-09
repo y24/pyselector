@@ -115,6 +115,7 @@ def format_hierarchy(
 
 def format_selector_candidates(backend: str, evaluations: list[SelectorEvaluation], color: bool = False) -> str:
     lines = [_heading(_backend_label(backend), color, level=2)]
+    evaluations = [evaluation for evaluation in evaluations if evaluation.hits != 0]
     if not evaluations:
         lines.append("    status: no candidates")
         return "\n".join(lines)
