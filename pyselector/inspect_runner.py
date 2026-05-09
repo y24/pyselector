@@ -16,6 +16,7 @@ from pyselector.selector.evaluator import append_found_index_candidates, evaluat
 from pyselector.selector.generator import generate_candidates, sort_candidates, deduplicate_candidates
 from pyselector.selector.snippet import build_code_snippet
 from pyselector.selector.warning import attach_warnings
+from pyselector.selector.win32_generator import build_win32_class_name_probe_candidate
 from pyselector.utils.logging import info_log
 
 
@@ -53,7 +54,8 @@ def run_inspect(args: Namespace) -> int:
                 "only_visible": args.only_visible,
             }
             info_log(f"{backend}: セレクター候補を評価中です... ({len(candidates)}件)", color)
-            evaluations = evaluate_candidates(candidates, inspector, scope, args.timeout, evaluation_max_items)
+            evaluation_candidates = _with_internal_probe_candidates(candidates, element)
+            evaluations = evaluate_candidates(evaluation_candidates, inspector, scope, args.timeout, evaluation_max_items)
             info_log(f"{backend}: found_index 候補を補完中です...", color)
             candidates = deduplicate_candidates(sort_candidates(append_found_index_candidates(candidates, evaluations, element)))
             info_log(f"{backend}: セレクター候補を再評価中です... ({len(candidates)}件)", color)
@@ -137,6 +139,15 @@ def _find_backend(inspections: list[BackendInspection], backend: str) -> Backend
 
 def _exclude_unmatched_evaluations(evaluations: list[SelectorEvaluation]) -> list[SelectorEvaluation]:
     return [evaluation for evaluation in evaluations if evaluation.hits != 0]
+
+
+def _with_internal_probe_candidates(candidates: list[Any], element: Any) -> list[Any]:
+    if element.backend != "win32":
+        return candidates
+    probe = build_win32_class_name_probe_candidate(element)
+    if probe is None:
+        return candidates
+    return candidates + [probe]
 
 
 def _use_color() -> bool:
