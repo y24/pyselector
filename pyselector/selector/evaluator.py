@@ -95,7 +95,9 @@ def _evaluate_found_index(inspector: Any, scope: dict[str, Any], condition: dict
     if max_items is not None:
         condition["_max_items"] = max_items
     matches, reached_limit = inspector.find_elements(scope, condition)
-    return (1 if 0 <= found_index < len(matches) else 0), reached_limit
+    if 0 <= found_index < len(matches):
+        return 1, False
+    return 0, reached_limit
 
 
 def _find_index_from_cache(evaluation: SelectorEvaluation, target: ElementInfo) -> int | None:

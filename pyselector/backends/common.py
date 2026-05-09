@@ -79,6 +79,25 @@ def element_from_wrapper(wrapper: Any, backend: str, depth: int | None = None) -
     )
 
 
+def element_info_matches(element_info: Any, condition: dict[str, Any]) -> bool:
+    if "handle" in condition and getattr(element_info, "handle", None) != condition["handle"]:
+        return False
+    if "class_name" in condition and getattr(element_info, "class_name", None) != condition["class_name"]:
+        return False
+    if "control_id" in condition and getattr(element_info, "control_id", None) != condition["control_id"]:
+        return False
+    if "control_type" in condition and getattr(element_info, "control_type", None) != condition["control_type"]:
+        return False
+    if "auto_id" in condition and getattr(element_info, "automation_id", None) != condition["auto_id"]:
+        return False
+    text = getattr(element_info, "rich_text", None) or getattr(element_info, "name", None) or ""
+    if "title" in condition and text != condition["title"]:
+        return False
+    if "title_re" in condition and re.match(condition["title_re"], text) is None:
+        return False
+    return True
+
+
 def hierarchy_node_from_wrapper(wrapper: Any, backend: str, depth: int) -> HierarchyNode:
     info = element_from_wrapper(wrapper, backend, depth)
     return HierarchyNode(
@@ -182,16 +201,19 @@ class PywinautoInspectorMixin:
     def find_elements(self, scope: dict[str, Any], condition: dict[str, Any]) -> tuple[list[ElementInfo], bool]:
         search_condition = dict(condition)
         max_items = search_condition.pop("_max_items", None)
+        if max_items is not None:
+            try:
+                root = self._scope_root(scope)
+                wrappers, reached_limit = self._find_wrappers_limited(root, search_condition, max_items)
+            except Exception:
+                wrappers, reached_limit = [], False
+            return [element_from_wrapper(w, self.backend_name) for w in wrappers], reached_limit
         try:
             root = self._scope_root(scope)
             wrappers = root.descendants(**search_condition)
         except Exception:
             wrappers = []
-        reached_limit = False
-        if max_items is not None and len(wrappers) > max_items:
-            wrappers = wrappers[:max_items]
-            reached_limit = True
-        return [element_from_wrapper(w, self.backend_name) for w in wrappers], reached_limit
+        return [element_from_wrapper(w, self.backend_name) for w in wrappers], False
 
     def find_elements_chain(
         self,
@@ -209,7 +231,13 @@ class PywinautoInspectorMixin:
                 next_wrappers = []
                 for wrapper in current_wrappers:
                     try:
-                        next_wrappers.extend(wrapper.descendants(**condition))
+                        if max_items is None:
+                            found_wrappers = wrapper.descendants(**condition)
+                            found_reached_limit = False
+                        else:
+                            found_wrappers, found_reached_limit = self._find_wrappers_limited(wrapper, condition, max_items)
+                        next_wrappers.extend(found_wrappers)
+                        reached_limit = reached_limit or found_reached_limit
                     except Exception:
                         continue
                 if index == 0 and len(steps) > 1:
@@ -221,6 +249,45 @@ class PywinautoInspectorMixin:
             return [element_from_wrapper(w, self.backend_name) for w in current_wrappers], reached_limit, parent_hits
         except Exception:
             return [], False, None
+
+    def _find_wrappers_limited(self, root: Any, condition: dict[str, Any], max_items: int) -> tuple[list[Any], bool]:
+        if self.backend_name == "win32":
+            try:
+                return self._find_win32_wrappers_limited(root, condition, max_items)
+            except Exception:
+                pass
+        wrappers = root.descendants(**condition)
+        if len(wrappers) > max_items:
+            return wrappers[:max_items], True
+        return wrappers, False
+
+    def _find_win32_wrappers_limited(self, root: Any, condition: dict[str, Any], max_items: int) -> tuple[list[Any], bool]:
+        from pywinauto.controls.hwndwrapper import HwndElementInfo
+        from pywinauto import win32functions
+        import ctypes
+        from ctypes import wintypes
+
+        root_info = getattr(root, "element_info", None)
+        if not isinstance(root_info, HwndElementInfo):
+            raise TypeError("root is not a win32 wrapper")
+        wrapper_class = type(root)
+        element_infos: list[Any] = []
+        reached_limit = False
+
+        def enum_window_proc(hwnd: int, lparam: int) -> bool:
+            nonlocal reached_limit
+            element_info = HwndElementInfo(hwnd)
+            if element_info_matches(element_info, condition):
+                if len(element_infos) >= max_items:
+                    reached_limit = True
+                    return False
+                element_infos.append(element_info)
+            return True
+
+        enum_win_proc_t = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+        proc = enum_win_proc_t(enum_window_proc)
+        win32functions.EnumChildWindows(root_info.handle, proc, 0)
+        return [wrapper_class(element_info) for element_info in element_infos], reached_limit
 
     def find_window_by_title(self, title: str, use_regex: bool) -> ElementInfo:
         try:

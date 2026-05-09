@@ -19,9 +19,13 @@ from pyselector.selector.warning import attach_warnings
 from pyselector.utils.logging import info_log
 
 
+DEFAULT_SELECTOR_EVALUATION_MAX_ITEMS = 10
+
+
 def run_inspect(args: Namespace) -> int:
     color = _use_color()
     info_log("pyselector started", color)
+    info_log(f"selector validation timeout: {args.timeout} sec", color)
     info_log(f"countdown: {args.delay} sec", color)
     wait_with_countdown(args.delay, color)
     cursor = get_cursor_position()
@@ -29,21 +33,32 @@ def run_inspect(args: Namespace) -> int:
     info_log("UI要素の情報を取得中です...", color)
 
     inspections: list[BackendInspection] = []
+    evaluation_max_items = args.max_items or DEFAULT_SELECTOR_EVALUATION_MAX_ITEMS
+    if args.max_items is None:
+        info_log(f"selector hit count limit: {evaluation_max_items}", color)
     for backend in _resolve_backends(args.backend):
         inspector = _create_inspector(backend)
         try:
+            info_log(f"{backend}: カーソル下の要素を取得中です...", color)
             element = inspector.element_from_point(cursor.x, cursor.y)
+            info_log(f"{backend}: 対象ウィンドウを特定中です...", color)
             target_window = inspector.get_target_window(element)
+            info_log(f"{backend}: 親子階層を取得中です...", color)
             hierarchy = inspector.get_hierarchy(element)
+            info_log(f"{backend}: セレクター候補を生成中です...", color)
             candidates = generate_candidates(element, hierarchy)
             scope = {
                 "scope": args.scope,
                 "target_handle": target_window.handle,
                 "only_visible": args.only_visible,
             }
-            evaluations = evaluate_candidates(candidates, inspector, scope, args.timeout, args.max_items)
+            info_log(f"{backend}: セレクター候補を評価中です... ({len(candidates)}件)", color)
+            evaluations = evaluate_candidates(candidates, inspector, scope, args.timeout, evaluation_max_items)
+            info_log(f"{backend}: found_index 候補を補完中です...", color)
             candidates = deduplicate_candidates(sort_candidates(append_found_index_candidates(candidates, evaluations, element)))
-            evaluations = evaluate_candidates(candidates, inspector, scope, args.timeout, args.max_items)
+            info_log(f"{backend}: セレクター候補を再評価中です... ({len(candidates)}件)", color)
+            evaluations = evaluate_candidates(candidates, inspector, scope, args.timeout, evaluation_max_items)
+            info_log(f"{backend}: warning とコード例を作成中です...", color)
             attach_warnings(evaluations, element, args.detail)
             evaluations = _exclude_unmatched_evaluations(evaluations)
             snippet = build_code_snippet(backend, target_window, evaluations)

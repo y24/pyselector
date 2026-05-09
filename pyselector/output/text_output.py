@@ -183,6 +183,8 @@ def _format_hits(evaluation: SelectorEvaluation) -> str:
         return "(Timeout)"
     if evaluation.status == "error":
         return "(Error)"
+    if evaluation.reached_limit:
+        return f"{evaluation.hits}+"
     return str(evaluation.hits)
 
 

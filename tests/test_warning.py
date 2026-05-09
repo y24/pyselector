@@ -35,3 +35,18 @@ def test_warning_for_multiple_parent_hits():
 
     assert "親要素が複数ヒットします" in warnings
 
+
+def test_warning_does_not_include_reached_limit_message():
+    element = ElementInfo(backend="win32", is_visible=True, is_enabled=True)
+    candidate = SelectorCandidate(
+        backend="win32",
+        selector_text='dlg.child_window(class_name="Button")',
+        selector_kind="win32_class_name",
+        condition={"class_name": "Button"},
+    )
+    evaluation = SelectorEvaluation(candidate=candidate, hits=10, reached_limit=True)
+
+    warnings = build_warnings(evaluation, element)
+
+    assert "探索上限に達したため、ヒット件数が実際より少ない可能性があります" not in warnings
+

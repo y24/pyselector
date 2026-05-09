@@ -26,8 +26,6 @@ def build_warnings(evaluation: SelectorEvaluation, element: ElementInfo, detail:
         warnings.append("親要素が複数ヒットします")
     if evaluation.candidate.uses_found_index:
         warnings.append(FOUND_INDEX_WARNING)
-    if evaluation.reached_limit:
-        warnings.append("探索上限に達したため、ヒット件数が実際より少ない可能性があります")
     if element.is_visible is False:
         warnings.append("対象要素は非表示です")
     if element.is_enabled is False:

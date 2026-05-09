@@ -12,6 +12,11 @@ class FakeInspector:
         return [ElementInfo(backend="win32", class_name="Edit")], False, 1
 
 
+class ReachedLimitInspector:
+    def find_elements(self, scope, condition):
+        return [ElementInfo(backend="win32", class_name="Button") for _ in range(10)], True
+
+
 def test_evaluate_parent_scoped_candidate_uses_steps():
     inspector = FakeInspector()
     candidate = SelectorCandidate(
@@ -34,3 +39,18 @@ def test_evaluate_parent_scoped_candidate_uses_steps():
         {"class_name": "ComboBox"},
         {"class_name": "Edit"},
     ]
+
+
+def test_found_index_candidate_does_not_inherit_limit_warning_when_found():
+    candidate = SelectorCandidate(
+        backend="win32",
+        selector_text='dlg.child_window(class_name="Button", found_index=1)',
+        selector_kind="win32_class_name_found_index",
+        condition={"class_name": "Button", "found_index": 1},
+        uses_found_index=True,
+    )
+
+    evaluations = evaluate_candidates([candidate], ReachedLimitInspector(), {}, timeout_sec=1, max_items=10)
+
+    assert evaluations[0].hits == 1
+    assert evaluations[0].reached_limit is False

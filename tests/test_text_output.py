@@ -100,3 +100,20 @@ def test_selector_candidates_output_uses_hits_as_prefix():
 
     assert '    [4] dlg.child_window(class_name="Button")' in output
     assert "        - warning: 複数要素にヒットします" in output
+
+
+def test_selector_candidates_output_marks_reached_limit_with_plus():
+    candidate = SelectorEvaluation(
+        candidate=SelectorCandidate(
+            backend="win32",
+            selector_text='dlg.child_window(class_name="Button")',
+            selector_kind="win32_class_name",
+            condition={"class_name": "Button"},
+        ),
+        hits=10,
+        reached_limit=True,
+    )
+
+    output = format_selector_candidates("win32", [candidate])
+
+    assert '    [10+] dlg.child_window(class_name="Button")' in output
