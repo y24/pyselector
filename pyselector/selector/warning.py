@@ -4,7 +4,6 @@ from pyselector.model.element_info import ElementInfo
 from pyselector.model.selector_candidate import SelectorEvaluation
 
 FOUND_INDEX_WARNING = "found_index は画面構成や表示順の変更に弱い可能性があります"
-HANDLE_WARNING = "handle はアプリ起動ごとに変わる可能性があります"
 
 
 def attach_warnings(evaluations: list[SelectorEvaluation], element: ElementInfo, detail: bool = False) -> list[SelectorEvaluation]:
@@ -25,8 +24,6 @@ def build_warnings(evaluation: SelectorEvaluation, element: ElementInfo, detail:
         warnings.append("複数要素にヒットします")
     if evaluation.candidate.uses_found_index:
         warnings.append(FOUND_INDEX_WARNING)
-    if evaluation.candidate.uses_handle:
-        warnings.append(HANDLE_WARNING)
     if evaluation.reached_limit:
         warnings.append("探索上限に達したため、ヒット件数が実際より少ない可能性があります")
     if element.is_visible is False:

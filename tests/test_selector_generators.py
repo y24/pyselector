@@ -2,7 +2,7 @@ from pyselector.model.element_info import ElementInfo
 from pyselector.selector.generator import generate_candidates
 
 
-def test_win32_candidates_follow_spec_order_and_handle_last():
+def test_win32_candidates_do_not_use_unstable_native_ids():
     element = ElementInfo(
         backend="win32",
         window_text="OK",
@@ -14,15 +14,13 @@ def test_win32_candidates_follow_spec_order_and_handle_last():
     candidates = generate_candidates(element)
 
     assert [candidate.selector_kind for candidate in candidates] == [
-        "win32_control_id_class_name",
         "win32_title_class_name",
-        "win32_control_id",
         "win32_class_name",
         "win32_title",
-        "win32_handle",
     ]
-    assert candidates[-1].uses_handle is True
-    assert candidates[0].condition == {"control_id": 1, "class_name": "Button"}
+    assert candidates[0].condition == {"title": "OK", "class_name": "Button"}
+    assert all("control_id" not in candidate.condition for candidate in candidates)
+    assert all("handle" not in candidate.condition for candidate in candidates)
 
 
 def test_uia_candidates_use_auto_id_and_control_type_first():

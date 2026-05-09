@@ -26,15 +26,10 @@ def choose_snippet_candidate(evaluations: list[SelectorEvaluation]) -> SelectorE
     for evaluation in evaluations:
         if evaluation.hits == 1 and evaluation.warnings == ["found_index は画面構成や表示順の変更に弱い可能性があります"]:
             return evaluation
-    for evaluation in evaluations:
-        if evaluation.hits == 1 and evaluation.warnings == ["handle はアプリ起動ごとに変わる可能性があります"]:
-            return evaluation
     return evaluations[0]
 
 
 def _window_expression(backend: str, target_window: TargetWindowInfo | None) -> str:
     if target_window and not is_blank(target_window.title):
         return f'dlg = Desktop(backend="{backend}").window(title="{escape_python_string(target_window.title or "")}")'
-    if target_window and target_window.handle is not None:
-        return f'dlg = Desktop(backend="{backend}").window(handle=0x{target_window.handle:X})'
     return f'dlg = Desktop(backend="{backend}").window()'

@@ -13,11 +13,9 @@ class SelectorCandidate:
     uses_title: bool = False
     uses_title_re: bool = False
     uses_class_name: bool = False
-    uses_control_id: bool = False
     uses_auto_id: bool = False
     uses_control_type: bool = False
     uses_found_index: bool = False
-    uses_handle: bool = False
     display_order: int = 0
 
 

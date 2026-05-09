@@ -10,18 +10,6 @@ def generate_win32_candidates(element: ElementInfo) -> list[SelectorCandidate]:
     class_name = None if is_blank(element.class_name) else element.class_name
     candidates: list[SelectorCandidate] = []
 
-    if element.control_id is not None and class_name:
-        candidates.append(
-            SelectorCandidate(
-                backend="win32",
-                selector_text=f'dlg.child_window(control_id={element.control_id}, class_name="{escape_python_string(class_name)}")',
-                selector_kind="win32_control_id_class_name",
-                condition={"control_id": element.control_id, "class_name": class_name},
-                uses_control_id=True,
-                uses_class_name=True,
-                display_order=10,
-            )
-        )
     if title and class_name:
         candidates.append(
             SelectorCandidate(
@@ -32,17 +20,6 @@ def generate_win32_candidates(element: ElementInfo) -> list[SelectorCandidate]:
                 uses_title=True,
                 uses_class_name=True,
                 display_order=20,
-            )
-        )
-    if element.control_id is not None:
-        candidates.append(
-            SelectorCandidate(
-                backend="win32",
-                selector_text=f"dlg.child_window(control_id={element.control_id})",
-                selector_kind="win32_control_id",
-                condition={"control_id": element.control_id},
-                uses_control_id=True,
-                display_order=30,
             )
         )
     if class_name:
@@ -65,17 +42,6 @@ def generate_win32_candidates(element: ElementInfo) -> list[SelectorCandidate]:
                 condition={"title": title},
                 uses_title=True,
                 display_order=70,
-            )
-        )
-    if element.handle is not None:
-        candidates.append(
-            SelectorCandidate(
-                backend="win32",
-                selector_text=f"dlg.child_window(handle=0x{element.handle:X})",
-                selector_kind="win32_handle",
-                condition={"handle": element.handle},
-                uses_handle=True,
-                display_order=1000,
             )
         )
     return candidates

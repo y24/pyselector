@@ -88,9 +88,9 @@ def test_selector_candidates_output_uses_hits_as_prefix():
     candidate = SelectorEvaluation(
         candidate=SelectorCandidate(
             backend="win32",
-            selector_text='dlg.child_window(control_id=0)',
-            selector_kind="win32_control_id",
-            condition={"control_id": 0},
+            selector_text='dlg.child_window(class_name="Button")',
+            selector_kind="win32_class_name",
+            condition={"class_name": "Button"},
         ),
         hits=4,
         warnings=["複数要素にヒットします"],
@@ -98,5 +98,5 @@ def test_selector_candidates_output_uses_hits_as_prefix():
 
     output = format_selector_candidates("win32", [candidate])
 
-    assert '    [4] dlg.child_window(control_id=0)' in output
+    assert '    [4] dlg.child_window(class_name="Button")' in output
     assert "        - warning: 複数要素にヒットします" in output
