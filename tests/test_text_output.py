@@ -2,6 +2,7 @@ from pyselector.model.element_info import ElementInfo
 from pyselector.model.inspection_result import BackendInspection, CursorPosition, InspectionResult
 from pyselector.model.rectangle import RectangleInfo
 from pyselector.model.selector_candidate import SelectorCandidate, SelectorEvaluation
+from pyselector.model.target_window import TargetWindowInfo
 from pyselector.output.text_output import format_inspection_result, format_selector_candidates
 
 
@@ -52,6 +53,24 @@ def test_inspection_output_can_omit_cursor_line():
 
     assert not output.startswith("[INFO] cursor position")
     assert output.startswith("[Target Window]")
+
+
+def test_backend_output_omits_process_fields_from_element_info():
+    element = ElementInfo(backend="win32", process_id=12345, process_name="sample.exe")
+    target_window = TargetWindowInfo(backend="win32", process_id=12345, process_name="sample.exe")
+    result = InspectionResult(
+        cursor_position=CursorPosition(10, 20),
+        win32=BackendInspection(backend="win32", element=element, target_window=target_window),
+    )
+
+    output = format_inspection_result(result)
+    target_section = output.split("[Backend]", 1)[0]
+    backend_section = output.split("[Backend]", 1)[1].split("[Hierarchy]", 1)[0]
+
+    assert "  process_name: sample.exe" in target_section
+    assert "  process_id: 12345" in target_section
+    assert "process_name" not in backend_section
+    assert "process_id" not in backend_section
 
 
 def test_selector_candidates_output_excludes_zero_hits():

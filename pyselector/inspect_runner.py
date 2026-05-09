@@ -30,7 +30,6 @@ def run_inspect(args: Namespace) -> int:
     wait_with_countdown(args.delay, color)
     cursor = get_cursor_position()
     info_log(f"cursor position: X={cursor.x}, Y={cursor.y}", color)
-    info_log("UI要素の情報を取得中です...", color)
 
     inspections: list[BackendInspection] = []
     evaluation_max_items = args.max_items or DEFAULT_SELECTOR_EVALUATION_MAX_ITEMS

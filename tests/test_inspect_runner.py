@@ -63,7 +63,6 @@ def test_inspect_logs_timeout_before_countdown(monkeypatch, capsys):
         "[INFO] selector validation timeout: 12 sec",
         "[INFO] countdown: 5 sec",
     ]
-    assert "[INFO] UI要素の情報を取得中です..." in lines
     assert "[INFO] selector hit count limit: 10" not in lines
     assert "[INFO] uia: カーソル下の要素を取得中です..." not in lines
 

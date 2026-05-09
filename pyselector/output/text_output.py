@@ -68,8 +68,6 @@ def format_backend_element(inspection: BackendInspection, color: bool = False) -
         ("is_visible", element.is_visible),
         ("is_enabled", element.is_enabled),
         ("handle", format_handle(element.handle)),
-        ("process_id", element.process_id),
-        ("process_name", element.process_name),
     ]
     return "\n".join([_heading(label, color, level=2)] + [f"    {name}: {format_value(value)}" for name, value in fields])
 
