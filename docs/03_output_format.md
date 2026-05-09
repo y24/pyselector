@@ -655,6 +655,7 @@ from pywinauto import Desktop
 
 dlg = Desktop(backend="win32").window(title="電卓")
 target = dlg.child_window(control_id=1, class_name="Button")
+target.click()
 ```
 
 ## 10.3 UIAの表示例
@@ -666,6 +667,7 @@ from pywinauto import Desktop
 
 dlg = Desktop(backend="uia").window(title="電卓")
 target = dlg.child_window(auto_id="num1Button", control_type="Button")
+target.click()
 ```
 
 ## 10.4 使用する候補
@@ -676,14 +678,13 @@ target = dlg.child_window(auto_id="num1Button", control_type="Button")
 
 ## 10.5 操作コード
 
-初期版では、以下のような操作コードは表示しない。
+クリック確認をすぐ行えるよう、コードスニペットの末尾には以下を表示する。
 
 ```python
-target.click_input()
-target.set_text("...")
+target.click()
 ```
 
-コードスニペットは、対象要素の取得までに留める。
+クリック以外の入力操作は表示しない。
 
 ---
 

@@ -962,6 +962,7 @@ from pywinauto import Desktop
 
 dlg = Desktop(backend="win32").window(title="電卓")
 target = dlg.child_window(control_id=1, class_name="Button")
+target.click()
 ```
 
 UIA。
@@ -971,6 +972,7 @@ from pywinauto import Desktop
 
 dlg = Desktop(backend="uia").window(title="電卓")
 target = dlg.child_window(auto_id="num1Button", control_type="Button")
+target.click()
 ```
 
 ---
