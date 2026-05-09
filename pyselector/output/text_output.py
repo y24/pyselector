@@ -6,6 +6,7 @@ from pyselector.model.inspection_result import BackendInspection, InspectionResu
 from pyselector.model.selector_candidate import SelectorEvaluation
 from pyselector.model.target_window import TargetWindowInfo
 from pyselector.output.formatters import format_handle, format_rectangle, format_value, quote_text
+from pyselector.utils.logging import format_info
 
 RESET = "\033[0m"
 BOLD = "\033[1m"
@@ -13,8 +14,15 @@ CYAN = "\033[36m"
 BRIGHT_BLUE = "\033[94m"
 
 
-def format_inspection_result(result: InspectionResult, detail: bool = False, color: bool = False) -> str:
-    lines: list[str] = [f"[INFO] cursor position: X={result.cursor_position.x}, Y={result.cursor_position.y}", ""]
+def format_inspection_result(
+    result: InspectionResult,
+    detail: bool = False,
+    color: bool = False,
+    include_cursor: bool = True,
+) -> str:
+    lines: list[str] = []
+    if include_cursor:
+        lines.extend([format_info(f"cursor position: X={result.cursor_position.x}, Y={result.cursor_position.y}", color), ""])
     target = _first_target(result)
     lines.extend(format_target_window(target, color).splitlines())
     lines.append("")

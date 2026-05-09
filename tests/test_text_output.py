@@ -39,6 +39,19 @@ def test_inspection_output_can_color_headings():
 
     assert "\033[1m\033[36m[Target Window]\033[0m" in output
     assert "\033[94m[Win32]\033[0m" in output
+    assert output.startswith("\033[90m[INFO] cursor position: X=10, Y=20\033[0m")
+
+
+def test_inspection_output_can_omit_cursor_line():
+    result = InspectionResult(
+        cursor_position=CursorPosition(10, 20),
+        win32=BackendInspection(backend="win32", element=ElementInfo(backend="win32")),
+    )
+
+    output = format_inspection_result(result, include_cursor=False)
+
+    assert not output.startswith("[INFO] cursor position")
+    assert output.startswith("[Target Window]")
 
 
 def test_selector_candidates_output_excludes_zero_hits():

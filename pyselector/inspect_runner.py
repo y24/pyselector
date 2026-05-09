@@ -16,13 +16,17 @@ from pyselector.selector.evaluator import append_found_index_candidates, evaluat
 from pyselector.selector.generator import generate_candidates, sort_candidates, deduplicate_candidates
 from pyselector.selector.snippet import build_code_snippet
 from pyselector.selector.warning import attach_warnings
+from pyselector.utils.logging import info_log
 
 
 def run_inspect(args: Namespace) -> int:
-    print("[INFO] pyselector started")
-    print(f"[INFO] countdown: {args.delay} sec")
-    wait_with_countdown(args.delay)
+    color = _use_color()
+    info_log("pyselector started", color)
+    info_log(f"countdown: {args.delay} sec", color)
+    wait_with_countdown(args.delay, color)
     cursor = get_cursor_position()
+    info_log(f"cursor position: X={cursor.x}, Y={cursor.y}", color)
+    info_log("UI要素の情報を取得中です...", color)
 
     inspections: list[BackendInspection] = []
     for backend in _resolve_backends(args.backend):
@@ -62,7 +66,7 @@ def run_inspect(args: Namespace) -> int:
         win32=_find_backend(inspections, "win32"),
         uia=_find_backend(inspections, "uia"),
     )
-    print(format_inspection_result(result, args.detail, _use_color()), end="")
+    print(format_inspection_result(result, args.detail, color, include_cursor=False), end="")
     return 0 if any(item.status == "success" for item in inspections) else 1
 
 
@@ -70,7 +74,7 @@ def run_tree(args: Namespace) -> int:
     inspector = _create_inspector(args.backend)
     try:
         if args.cursor:
-            wait_with_countdown(args.delay)
+            wait_with_countdown(args.delay, _use_color())
             cursor = get_cursor_position()
             root = inspector.element_from_point(cursor.x, cursor.y)
         else:
