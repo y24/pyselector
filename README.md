@@ -1,22 +1,22 @@
 # pyselector
 
-pyselector is a CLI tool for inspecting Windows UI elements and generating pywinauto selector candidates.
+pyselector は、Windows の UI 要素を調査し、pywinauto のセレクター候補を生成する CLI ツールです。
 
-It is intended for QA engineers, test automation developers, and RPA script authors who need to identify desktop UI elements for pywinauto automation.
+pywinauto による自動化でデスクトップ UI 要素を特定する必要がある、QA エンジニア、テスト自動化開発者、RPA スクリプト作成者向けです。
 
-## Install
+## インストール
 
 ```bash
 pip install .
 ```
 
-For development:
+開発用:
 
 ```bash
 pip install -e .
 ```
 
-## Commands
+## コマンド
 
 ```bash
 pyselector --help
@@ -29,34 +29,34 @@ pyselector tree --cursor
 pyselector tree --window-title "電卓"
 ```
 
-When no subcommand is supplied, `inspect` is used.
+サブコマンドを指定しない場合は、`inspect` が使用されます。
 
 ## Inspect
 
-`inspect` waits for the configured delay, reads the current cursor position, then tries to inspect the UI element under the cursor with Win32 and UIA backends.
+`inspect` は設定された遅延時間だけ待機し、現在のカーソル位置を読み取ったうえで、カーソル下の UI 要素を Win32 と UIA のバックエンドで調査します。
 
 ```bash
 pyselector inspect --delay 5 --backend both --scope window
 ```
 
-The output includes:
+出力には次の情報が含まれます。
 
-- Cursor position
-- Target window information
-- Win32 / UIA element attributes
-- Parent hierarchy
-- pywinauto selector candidates
-- Hit counts and warnings
-- Minimal pywinauto code snippets
+- カーソル位置
+- 対象ウィンドウの情報
+- Win32 / UIA 要素の属性
+- 親階層
+- pywinauto セレクター候補
+- ヒット数と警告
+- 最小限の pywinauto コードスニペット
 
 ## Tree
 
-`tree` prints a compact UI element tree from either the cursor element or a window title.
+`tree` は、カーソル位置の要素またはウィンドウタイトルを起点に、コンパクトな UI 要素ツリーを出力します。
 
 ```bash
 pyselector tree --window-title "電卓" --backend uia --depth 3
 ```
 
-## Notes
+## 注意事項
 
-This initial version intentionally does not provide JSON output, file output, clipboard copy, GUI mode, persistent mode, or UI operations such as clicking and typing. The tool focuses on inspect, selector candidates, and hit counts.
+この初期バージョンでは、JSON 出力、ファイル出力、クリップボードへのコピー、GUI モード、常駐モード、クリックや入力などの UI 操作は意図的に提供していません。このツールは、調査、セレクター候補、ヒット数の確認に重点を置いています。
