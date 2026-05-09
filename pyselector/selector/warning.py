@@ -22,6 +22,8 @@ def build_warnings(evaluation: SelectorEvaluation, element: ElementInfo, detail:
         warnings.append("この候補では対象要素にヒットしません")
     if evaluation.hits is not None and evaluation.hits > 1:
         warnings.append("複数要素にヒットします")
+    if evaluation.parent_hits is not None and evaluation.parent_hits > 1:
+        warnings.append("親要素が複数ヒットします")
     if evaluation.candidate.uses_found_index:
         warnings.append(FOUND_INDEX_WARNING)
     if evaluation.reached_limit:

@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+from typing import Any
+
 from pyselector.model.element_info import ElementInfo
-from pyselector.model.selector_candidate import SelectorCandidate
+from pyselector.model.hierarchy import HierarchyNode
+from pyselector.model.selector_candidate import SelectorCandidate, SelectorStep
 from pyselector.utils.text import escape_python_string, escape_regex, is_blank
 
 
-def generate_uia_candidates(element: ElementInfo) -> list[SelectorCandidate]:
+def generate_uia_candidates(element: ElementInfo, hierarchy: list[HierarchyNode] | None = None) -> list[SelectorCandidate]:
     title = None if is_blank(element.window_text) else element.window_text
     auto_id = None if is_blank(element.automation_id) else element.automation_id
     control_type = None if is_blank(element.control_type) else element.control_type
@@ -93,6 +96,7 @@ def generate_uia_candidates(element: ElementInfo) -> list[SelectorCandidate]:
                 display_order=70,
             )
         )
+    candidates.extend(_generate_parent_scoped_candidates(element, hierarchy))
     return candidates
 
 
@@ -109,3 +113,92 @@ def build_uia_found_index_candidate(base: SelectorCandidate, found_index: int) -
         uses_found_index=True,
         display_order=55,
     )
+
+
+def _generate_parent_scoped_candidates(
+    element: ElementInfo,
+    hierarchy: list[HierarchyNode] | None,
+) -> list[SelectorCandidate]:
+    if not hierarchy or len(hierarchy) < 2:
+        return []
+    parent = hierarchy[-2]
+    parent_conditions = _parent_conditions(parent)
+    target_conditions = _target_conditions(element)
+    candidates: list[SelectorCandidate] = []
+    order = 35
+    for parent_kind, parent_condition in parent_conditions:
+        for target_kind, target_condition in target_conditions:
+            selector_text = f"{_child_window_expr('dlg', parent_condition)}.{_child_window_call(target_condition)}"
+            candidates.append(
+                SelectorCandidate(
+                    backend="uia",
+                    selector_text=selector_text,
+                    selector_kind=f"uia_parent_{parent_kind}_target_{target_kind}",
+                    condition=target_condition,
+                    steps=[
+                        SelectorStep(role="ancestor", condition=parent_condition),
+                        SelectorStep(role="target", condition=target_condition),
+                    ],
+                    uses_title=("title" in parent_condition or "title" in target_condition),
+                    uses_auto_id=("auto_id" in parent_condition or "auto_id" in target_condition),
+                    uses_control_type=("control_type" in parent_condition or "control_type" in target_condition),
+                    uses_parent_scope=True,
+                    display_order=order,
+                )
+            )
+            order += 1
+    return candidates
+
+
+def _parent_conditions(parent: HierarchyNode) -> list[tuple[str, dict[str, Any]]]:
+    title = None if is_blank(parent.window_text) else parent.window_text
+    auto_id = None if is_blank(parent.automation_id) else parent.automation_id
+    control_type = None if is_blank(parent.control_type) else parent.control_type
+    conditions: list[tuple[str, dict[str, Any]]] = []
+    if auto_id and control_type:
+        conditions.append(("auto_id_control_type", {"auto_id": auto_id, "control_type": control_type}))
+    if title and auto_id and control_type:
+        conditions.append(("title_auto_id_control_type", {"title": title, "auto_id": auto_id, "control_type": control_type}))
+    if auto_id:
+        conditions.append(("auto_id", {"auto_id": auto_id}))
+    if title and control_type:
+        conditions.append(("title_control_type", {"title": title, "control_type": control_type}))
+    if control_type:
+        conditions.append(("control_type", {"control_type": control_type}))
+    return conditions[:4]
+
+
+def _target_conditions(element: ElementInfo) -> list[tuple[str, dict[str, Any]]]:
+    title = None if is_blank(element.window_text) else element.window_text
+    auto_id = None if is_blank(element.automation_id) else element.automation_id
+    control_type = None if is_blank(element.control_type) else element.control_type
+    conditions: list[tuple[str, dict[str, Any]]] = []
+    if auto_id and control_type:
+        conditions.append(("auto_id_control_type", {"auto_id": auto_id, "control_type": control_type}))
+    if control_type:
+        conditions.append(("control_type", {"control_type": control_type}))
+    if title and control_type:
+        conditions.append(("title_control_type", {"title": title, "control_type": control_type}))
+    if auto_id:
+        conditions.append(("auto_id", {"auto_id": auto_id}))
+    if title:
+        conditions.append(("title", {"title": title}))
+    return conditions[:3]
+
+
+def _child_window_expr(prefix: str, condition: dict[str, Any]) -> str:
+    return f"{prefix}.{_child_window_call(condition)}"
+
+
+def _child_window_call(condition: dict[str, Any]) -> str:
+    return f"child_window({_format_condition(condition)})"
+
+
+def _format_condition(condition: dict[str, Any]) -> str:
+    parts = []
+    for key, value in condition.items():
+        if isinstance(value, str):
+            parts.append(f'{key}="{escape_python_string(value)}"')
+        else:
+            parts.append(f"{key}={value}")
+    return ", ".join(parts)

@@ -35,7 +35,7 @@ def run_inspect(args: Namespace) -> int:
             element = inspector.element_from_point(cursor.x, cursor.y)
             target_window = inspector.get_target_window(element)
             hierarchy = inspector.get_hierarchy(element)
-            candidates = generate_candidates(element)
+            candidates = generate_candidates(element, hierarchy)
             scope = {
                 "scope": args.scope,
                 "target_handle": target_window.handle,

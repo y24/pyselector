@@ -222,7 +222,7 @@ SelectorCandidate
 例。
 
 ```python
-dlg.child_window(control_id=1, class_name="Button")
+dlg.child_window(title="OK", class_name="Button")
 ```
 
 ## 5.2 selector_kind
@@ -247,6 +247,31 @@ handle
 
 ---
 
+## 5.4 steps
+
+親要素経由セレクターのように、複数段階で探索する候補は `steps` を持つ。
+
+```text
+SelectorStep
+  role
+  condition
+```
+
+単体候補では従来通り `condition` を評価し、親要素経由候補では `steps` を先頭から順に評価する。
+
+例。
+
+```python
+dlg.child_window(title="L:\\Cubase Projects\\Audio", class_name="ComboBox").child_window(class_name="Edit")
+```
+
+```text
+steps[0]: role=ancestor, condition={"title": "L:\\Cubase Projects\\Audio", "class_name": "ComboBox"}
+steps[1]: role=target, condition={"class_name": "Edit"}
+```
+
+---
+
 # 6. Win32 Backend向け候補生成
 
 ## 6.1 基本方針
@@ -254,14 +279,15 @@ handle
 Win32 Backendでは、以下の属性を主に使用する。
 
 ```text
-- control_id
 - class_name
 - title
 - found_index
 - handle
 ```
 
-Win32 Backendでは、`control_id` と `class_name` を優先する。
+Win32 Backendでは、`title + class_name` と `class_name` を優先する。
+
+`control_id` は環境やアプリ実装によって安定しない場合があるため、単体候補でも親要素経由候補でも使用しない。
 
 `handle` はアプリケーション起動ごとに変わる可能性があるため、常に最下位候補とする。
 
@@ -272,9 +298,7 @@ Win32 Backendでは、`control_id` と `class_name` を優先する。
 Win32 Backendでは、以下の順で候補を生成する。
 
 ```python
-dlg.child_window(control_id=..., class_name="...")
 dlg.child_window(title="...", class_name="...")
-dlg.child_window(control_id=...)
 dlg.child_window(class_name="...", found_index=N)
 dlg.child_window(title="...", found_index=N)
 dlg.child_window(class_name="...")
@@ -286,35 +310,18 @@ dlg.child_window(handle=...)
 
 | 順位 | 候補                         | 生成条件                               |
 | -: | -------------------------- | ---------------------------------- |
-|  1 | `control_id + class_name`  | `control_id` と `class_name` が取得できる |
-|  2 | `title + class_name`       | `title` と `class_name` が取得できる      |
-|  3 | `control_id`               | `control_id` が取得できる                |
-|  4 | `class_name + found_index` | `class_name` が取得でき、同一class候補が複数ある  |
-|  5 | `title + found_index`      | `title` が取得でき、同一title候補が複数ある       |
-|  6 | `class_name`               | `class_name` が取得できる                |
-|  7 | `title`                    | `title` が取得できる                     |
-|  8 | `handle`                   | `handle` が取得できる                    |
+|  1 | `title + class_name`       | `title` と `class_name` が取得できる      |
+|  2 | `class_name + found_index` | `class_name` が取得でき、同一class候補が複数ある  |
+|  3 | `title + found_index`      | `title` が取得でき、同一title候補が複数ある       |
+|  4 | `class_name`               | `class_name` が取得できる                |
+|  5 | `title`                    | `title` が取得できる                     |
+|  6 | `handle`                   | `handle` が取得できる                    |
 
 ---
 
-## 6.4 `control_id + class_name`
+## 6.4 `control_id`
 
-生成例。
-
-```python
-dlg.child_window(control_id=1, class_name="Button")
-```
-
-### 生成条件
-
-```text
-- control_id が取得できる
-- class_name が取得できる
-```
-
-### 備考
-
-Win32では有力な候補として先頭に表示する。
+`control_id` 候補は生成しない。
 
 ---
 
@@ -338,28 +345,6 @@ dlg.child_window(title="OK", class_name="Button")
 表示文言に依存するが、実務上利用頻度が高いため上位候補とする。
 
 通常表示では、title依存のwarningは表示しない。
-
----
-
-## 6.6 `control_id`
-
-生成例。
-
-```python
-dlg.child_window(control_id=1)
-```
-
-### 生成条件
-
-```text
-- control_id が取得できる
-```
-
-### 備考
-
-単独で一意になることもあるが、同じcontrol_idが別コンテナ配下に存在する可能性もあるため、ヒット件数確認の対象とする。
-
----
 
 ## 6.7 `class_name + found_index`
 
@@ -479,6 +464,38 @@ handle候補は、常にWin32候補の最後に表示する。
 ```text
 warning: handle はアプリ起動ごとに変わる可能性があります
 ```
+
+---
+
+## 6.12 親要素経由セレクター
+
+対象要素単体の `class_name` だけでは複数ヒットしやすい場合に備え、直近の親要素を経由した候補を生成する。
+
+例。
+
+```python
+dlg.child_window(title="L:\\Cubase Projects\\Audio", class_name="ComboBox").child_window(class_name="Edit")
+dlg.child_window(class_name="ComboBox").child_window(class_name="Edit")
+dlg.child_window(title="L:\\Cubase Projects\\Audio", class_name="ComboBox").child_window(title="L:\\Cubase Projects\\Audio", class_name="Edit")
+```
+
+親側は以下を優先する。
+
+```text
+1. title + class_name
+2. class_name
+```
+
+子側は以下を優先する。
+
+```text
+1. class_name
+2. title + class_name
+3. title
+```
+
+親要素経由候補は `uses_parent_scope=True` とし、弱い単体候補より上位に表示する。
+親要素経由候補でも `control_id` は使用しない。
 
 ---
 
@@ -689,6 +706,36 @@ dlg.child_window(title="OK")
 
 ---
 
+## 7.11 親要素経由セレクター
+
+UIA Backendでも、直近の親要素を経由した候補を生成する。
+
+例。
+
+```python
+dlg.child_window(auto_id="addressComboBox", control_type="ComboBox").child_window(control_type="Edit")
+dlg.child_window(title="L:\\Cubase Projects\\Audio", control_type="ComboBox").child_window(control_type="Edit")
+```
+
+親側は以下を優先する。
+
+```text
+1. auto_id + control_type
+2. title + auto_id + control_type
+3. auto_id
+4. title + control_type
+```
+
+子側は以下を優先する。
+
+```text
+1. auto_id + control_type
+2. control_type
+3. title + control_type
+```
+
+---
+
 # 8. found_index算出仕様
 
 ## 8.1 目的
@@ -751,7 +798,7 @@ found_index = 一致要素一覧内での対象要素の0始まり位置
 
 ```text
 [1] hits: 1
-    dlg.child_window(control_id=1, class_name="Button")
+    dlg.child_window(title="OK", class_name="Button")
 ```
 
 ## 9.2 探索範囲
@@ -772,10 +819,10 @@ found_index = 一致要素一覧内での対象要素の0始まり位置
 例。
 
 ```python
-dlg.child_window(control_id=1, class_name="Button")
+dlg.child_window(title="OK", class_name="Button")
 ```
 
-この候補であれば、対象ウィンドウ配下から `control_id=1` かつ `class_name="Button"` に一致する要素数を数える。
+この候補であれば、対象ウィンドウ配下から `title="OK"` かつ `class_name="Button"` に一致する要素数を数える。
 
 ## 9.4 found_index付き候補のヒット件数
 
@@ -813,7 +860,7 @@ handle候補はヒット件数が1であっても、常にwarningを表示する
 
 ```text
 [1] hits: (Error)
-    dlg.child_window(control_id=1, class_name="Button")
+    dlg.child_window(title="OK", class_name="Button")
     warning: セレクター評価に失敗しました
 ```
 
@@ -855,6 +902,7 @@ warningは、候補の採用時に注意が必要な場合のみ表示する。
 | --------------------- | ------------------------------------- |
 | `hits = 0`            | `この候補では対象要素にヒットしません`                  |
 | `hits > 1`            | `複数要素にヒットします`                         |
+| 親要素が複数ヒットする         | `親要素が複数ヒットします`                         |
 | `found_index` を使用している | `found_index は画面構成や表示順の変更に弱い可能性があります` |
 | `handle` を使用している      | `handle はアプリ起動ごとに変わる可能性があります`         |
 | セレクター評価に失敗した          | `セレクター評価に失敗しました`                      |
@@ -961,7 +1009,7 @@ Win32。
 from pywinauto import Desktop
 
 dlg = Desktop(backend="win32").window(title="電卓")
-target = dlg.child_window(control_id=1, class_name="Button")
+target = dlg.child_window(title="OK", class_name="Button")
 target.click()
 ```
 
@@ -996,19 +1044,13 @@ handle: 0x00123456
 [Selector Candidates - Win32]
 
 [1] hits: 1
-    dlg.child_window(control_id=1, class_name="Button")
-
-[2] hits: 1
     dlg.child_window(title="OK", class_name="Button")
 
-[3] hits: 1
-    dlg.child_window(control_id=1)
-
-[4] hits: 5
+[2] hits: 5
     dlg.child_window(class_name="Button")
     warning: 複数要素にヒットします
 
-[5] hits: 1
+[3] hits: 1
     dlg.child_window(handle=0x00123456)
     warning: handle はアプリ起動ごとに変わる可能性があります
 ```

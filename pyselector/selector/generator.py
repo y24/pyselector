@@ -1,16 +1,17 @@
 from __future__ import annotations
 
 from pyselector.model.element_info import ElementInfo
+from pyselector.model.hierarchy import HierarchyNode
 from pyselector.model.selector_candidate import SelectorCandidate
 from pyselector.selector.uia_generator import generate_uia_candidates
 from pyselector.selector.win32_generator import generate_win32_candidates
 
 
-def generate_candidates(element: ElementInfo) -> list[SelectorCandidate]:
+def generate_candidates(element: ElementInfo, hierarchy: list[HierarchyNode] | None = None) -> list[SelectorCandidate]:
     if element.backend == "win32":
-        candidates = generate_win32_candidates(element)
+        candidates = generate_win32_candidates(element, hierarchy)
     elif element.backend == "uia":
-        candidates = generate_uia_candidates(element)
+        candidates = generate_uia_candidates(element, hierarchy)
     else:
         candidates = []
     return sort_candidates(deduplicate_candidates(candidates))

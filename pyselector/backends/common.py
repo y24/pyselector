@@ -193,6 +193,35 @@ class PywinautoInspectorMixin:
             reached_limit = True
         return [element_from_wrapper(w, self.backend_name) for w in wrappers], reached_limit
 
+    def find_elements_chain(
+        self,
+        scope: dict[str, Any],
+        steps: list[dict[str, Any]],
+        max_items: int | None,
+    ) -> tuple[list[ElementInfo], bool, int | None]:
+        if not steps:
+            return [], False, None
+        try:
+            current_wrappers = [self._scope_root(scope)]
+            parent_hits: int | None = None
+            reached_limit = False
+            for index, condition in enumerate(steps):
+                next_wrappers = []
+                for wrapper in current_wrappers:
+                    try:
+                        next_wrappers.extend(wrapper.descendants(**condition))
+                    except Exception:
+                        continue
+                if index == 0 and len(steps) > 1:
+                    parent_hits = len(next_wrappers)
+                if max_items is not None and len(next_wrappers) > max_items:
+                    next_wrappers = next_wrappers[:max_items]
+                    reached_limit = True
+                current_wrappers = next_wrappers
+            return [element_from_wrapper(w, self.backend_name) for w in current_wrappers], reached_limit, parent_hits
+        except Exception:
+            return [], False, None
+
     def find_window_by_title(self, title: str, use_regex: bool) -> ElementInfo:
         try:
             windows = self._desktop().windows()

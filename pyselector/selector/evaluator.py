@@ -26,17 +26,24 @@ def evaluate_candidates(
         if max_items is not None:
             condition["_max_items"] = max_items
         try:
-            if "found_index" in condition:
+            if candidate.steps:
+                matches, reached_limit, parent_hits = _evaluate_steps(inspector, scope, candidate, max_items)
+                hits = len(matches)
+            elif "found_index" in condition:
                 found_index = condition.pop("found_index")
                 hits, reached_limit = _evaluate_found_index(inspector, scope, condition, found_index, max_items)
+                matches = []
+                parent_hits = None
             else:
                 matches, reached_limit = inspector.find_elements(scope, condition)
                 hits = len(matches)
+                parent_hits = None
             evaluation = SelectorEvaluation(
                 candidate=candidate,
                 hits=hits,
                 status="success",
                 reached_limit=reached_limit,
+                parent_hits=parent_hits,
             )
             setattr(evaluation, "_matches", matches if "found_index" not in candidate.condition else [])
             evaluations.append(evaluation)
@@ -71,6 +78,17 @@ def append_found_index_candidates(
         if candidate is not None:
             extra.append(candidate)
     return candidates + extra
+
+
+def _evaluate_steps(
+    inspector: Any,
+    scope: dict[str, Any],
+    candidate: SelectorCandidate,
+    max_items: int | None,
+) -> tuple[list[ElementInfo], bool, int | None]:
+    if hasattr(inspector, "find_elements_chain"):
+        return inspector.find_elements_chain(scope, [step.condition for step in candidate.steps], max_items)
+    return [], False, None
 
 
 def _evaluate_found_index(inspector: Any, scope: dict[str, Any], condition: dict[str, Any], found_index: int, max_items: int | None) -> tuple[int, bool]:
