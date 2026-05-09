@@ -119,13 +119,10 @@ def format_selector_candidates(backend: str, evaluations: list[SelectorEvaluatio
     if not evaluations:
         lines.append("    status: no candidates")
         return "\n".join(lines)
-    lines.append("")
-    for index, evaluation in enumerate(evaluations, 1):
-        lines.append(f"    [{index}] hits: {_format_hits(evaluation)}")
-        lines.append(f"        {evaluation.candidate.selector_text}")
+    for evaluation in evaluations:
+        lines.append(f"    [{_format_hits(evaluation)}] {evaluation.candidate.selector_text}")
         for warning in evaluation.warnings:
-            lines.append(f"        warning: {warning}")
-        lines.append("")
+            lines.append(f"        - warning: {warning}")
     return "\n".join(lines).rstrip()
 
 

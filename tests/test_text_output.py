@@ -66,5 +66,24 @@ def test_selector_candidates_output_excludes_zero_hits():
 
     assert 'dlg.child_window(auto_id="Header", control_type="Text")' not in output
     assert "この候補では対象要素にヒットしません" not in output
-    assert "    [1] hits: 1" in output
+    assert '    [1] dlg.child_window(control_type="Text")' in output
+    assert "        * hits:" not in output
     assert 'dlg.child_window(control_type="Text")' in output
+
+
+def test_selector_candidates_output_uses_hits_as_prefix():
+    candidate = SelectorEvaluation(
+        candidate=SelectorCandidate(
+            backend="win32",
+            selector_text='dlg.child_window(control_id=0)',
+            selector_kind="win32_control_id",
+            condition={"control_id": 0},
+        ),
+        hits=4,
+        warnings=["複数要素にヒットします"],
+    )
+
+    output = format_selector_candidates("win32", [candidate])
+
+    assert '    [4] dlg.child_window(control_id=0)' in output
+    assert "        - warning: 複数要素にヒットします" in output
