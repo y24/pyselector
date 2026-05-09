@@ -74,17 +74,6 @@ def generate_uia_candidates(element: ElementInfo, hierarchy: list[HierarchyNode]
                 display_order=50,
             )
         )
-    if control_type:
-        candidates.append(
-            SelectorCandidate(
-                backend="uia",
-                selector_text=f'dlg.child_window(control_type="{escape_python_string(control_type)}")',
-                selector_kind="uia_control_type",
-                condition={"control_type": control_type},
-                uses_control_type=True,
-                display_order=60,
-            )
-        )
     if title:
         candidates.append(
             SelectorCandidate(
@@ -163,8 +152,6 @@ def _parent_conditions(parent: HierarchyNode) -> list[tuple[str, dict[str, Any]]
         conditions.append(("auto_id", {"auto_id": auto_id}))
     if title and control_type:
         conditions.append(("title_control_type", {"title": title, "control_type": control_type}))
-    if control_type:
-        conditions.append(("control_type", {"control_type": control_type}))
     return conditions[:4]
 
 
@@ -175,8 +162,6 @@ def _target_conditions(element: ElementInfo) -> list[tuple[str, dict[str, Any]]]
     conditions: list[tuple[str, dict[str, Any]]] = []
     if auto_id and control_type:
         conditions.append(("auto_id_control_type", {"auto_id": auto_id, "control_type": control_type}))
-    if control_type:
-        conditions.append(("control_type", {"control_type": control_type}))
     if title and control_type:
         conditions.append(("title_control_type", {"title": title, "control_type": control_type}))
     if auto_id:

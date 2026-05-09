@@ -40,20 +40,6 @@ def generate_win32_candidates(element: ElementInfo, hierarchy: list[HierarchyNod
     return candidates
 
 
-def build_win32_class_name_probe_candidate(element: ElementInfo) -> SelectorCandidate | None:
-    class_name = None if is_blank(element.class_name) else element.class_name
-    if not class_name:
-        return None
-    return SelectorCandidate(
-        backend="win32",
-        selector_text=f'dlg.child_window(class_name="{escape_python_string(class_name)}")',
-        selector_kind="win32_class_name",
-        condition={"class_name": class_name},
-        uses_class_name=True,
-        display_order=60,
-    )
-
-
 def build_win32_found_index_candidate(base: SelectorCandidate, found_index: int) -> SelectorCandidate | None:
     if base.selector_kind == "win32_class_name":
         class_name = base.condition["class_name"]

@@ -16,7 +16,6 @@ from pyselector.selector.evaluator import append_found_index_candidates, evaluat
 from pyselector.selector.generator import generate_candidates, sort_candidates, deduplicate_candidates
 from pyselector.selector.snippet import build_code_snippet
 from pyselector.selector.warning import attach_warnings
-from pyselector.selector.win32_generator import build_win32_class_name_probe_candidate
 from pyselector.utils.logging import info_log
 
 
@@ -35,18 +34,14 @@ def run_inspect(args: Namespace) -> int:
 
     inspections: list[BackendInspection] = []
     evaluation_max_items = args.max_items or DEFAULT_SELECTOR_EVALUATION_MAX_ITEMS
-    if args.max_items is None:
-        info_log(f"selector hit count limit: {evaluation_max_items}", color)
     for backend in _resolve_backends(args.backend):
         inspector = _create_inspector(backend)
         try:
-            info_log(f"{backend}: カーソル下の要素を取得中です...", color)
             element = inspector.element_from_point(cursor.x, cursor.y)
             info_log(f"{backend}: 対象ウィンドウを特定中です...", color)
             target_window = inspector.get_target_window(element)
             info_log(f"{backend}: 親子階層を取得中です...", color)
             hierarchy = inspector.get_hierarchy(element)
-            info_log(f"{backend}: セレクター候補を生成中です...", color)
             candidates = generate_candidates(element, hierarchy)
             scope = {
                 "scope": args.scope,
@@ -54,13 +49,10 @@ def run_inspect(args: Namespace) -> int:
                 "only_visible": args.only_visible,
             }
             info_log(f"{backend}: セレクター候補を評価中です... ({len(candidates)}件)", color)
-            evaluation_candidates = _with_internal_probe_candidates(candidates, element)
-            evaluations = evaluate_candidates(evaluation_candidates, inspector, scope, args.timeout, evaluation_max_items)
-            info_log(f"{backend}: found_index 候補を補完中です...", color)
+            evaluations = evaluate_candidates(candidates, inspector, scope, args.timeout, evaluation_max_items)
             candidates = deduplicate_candidates(sort_candidates(append_found_index_candidates(candidates, evaluations, element)))
             info_log(f"{backend}: セレクター候補を再評価中です... ({len(candidates)}件)", color)
             evaluations = evaluate_candidates(candidates, inspector, scope, args.timeout, evaluation_max_items)
-            info_log(f"{backend}: warning とコード例を作成中です...", color)
             attach_warnings(evaluations, element, args.detail)
             evaluations = _exclude_unmatched_evaluations(evaluations)
             snippet = build_code_snippet(backend, target_window, evaluations)
@@ -139,15 +131,6 @@ def _find_backend(inspections: list[BackendInspection], backend: str) -> Backend
 
 def _exclude_unmatched_evaluations(evaluations: list[SelectorEvaluation]) -> list[SelectorEvaluation]:
     return [evaluation for evaluation in evaluations if evaluation.hits != 0]
-
-
-def _with_internal_probe_candidates(candidates: list[Any], element: Any) -> list[Any]:
-    if element.backend != "win32":
-        return candidates
-    probe = build_win32_class_name_probe_candidate(element)
-    if probe is None:
-        return candidates
-    return candidates + [probe]
 
 
 def _use_color() -> bool:
