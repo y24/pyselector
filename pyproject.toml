@@ -15,5 +15,8 @@ dependencies = [
 [project.scripts]
 pyselector = "pyselector.cli:main"
 
+[tool.setuptools.packages.find]
+include = ["pyselector*"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
