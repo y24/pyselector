@@ -1,0 +1,36 @@
+from __future__ import annotations
+
+from abc import ABC, abstractmethod
+from typing import Any
+
+from pyselector.model.element_info import ElementInfo
+from pyselector.model.hierarchy import HierarchyNode
+from pyselector.model.target_window import TargetWindowInfo
+
+
+class BackendInspector(ABC):
+    backend_name: str
+
+    @abstractmethod
+    def element_from_point(self, x: int, y: int) -> ElementInfo:
+        raise NotImplementedError
+
+    @abstractmethod
+    def get_target_window(self, element: ElementInfo) -> TargetWindowInfo:
+        raise NotImplementedError
+
+    @abstractmethod
+    def get_hierarchy(self, element: ElementInfo) -> list[HierarchyNode]:
+        raise NotImplementedError
+
+    @abstractmethod
+    def find_elements(self, scope: dict[str, Any], condition: dict[str, Any]) -> tuple[list[ElementInfo], bool]:
+        raise NotImplementedError
+
+    @abstractmethod
+    def find_window_by_title(self, title: str, use_regex: bool) -> ElementInfo:
+        raise NotImplementedError
+
+    @abstractmethod
+    def walk_tree(self, root: ElementInfo, depth: int, max_items: int, only_visible: bool) -> tuple[list[HierarchyNode], bool]:
+        raise NotImplementedError

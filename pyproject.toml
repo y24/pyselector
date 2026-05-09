@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pyselector"
+version = "0.1.0"
+description = "A CLI tool to inspect Windows UI elements and generate pywinauto selector candidates."
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "pywinauto>=0.6.8",
+]
+
+[project.scripts]
+pyselector = "pyselector.cli:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
