@@ -10,7 +10,11 @@ from pyselector.utils.text import escape_python_string, escape_regex, is_blank
 FOUND_INDEX_TRIAL_COUNT = 3
 
 
-def generate_uia_candidates(element: ElementInfo, hierarchy: list[HierarchyNode] | None = None) -> list[SelectorCandidate]:
+def generate_uia_candidates(
+    element: ElementInfo,
+    hierarchy: list[HierarchyNode] | None = None,
+    found_index_trial_count: int | None = None,
+) -> list[SelectorCandidate]:
     title = None if is_blank(element.window_text) else element.window_text
     auto_id = None if is_blank(element.automation_id) else element.automation_id
     control_type = None if is_blank(element.control_type) else element.control_type
@@ -87,7 +91,14 @@ def generate_uia_candidates(element: ElementInfo, hierarchy: list[HierarchyNode]
                 display_order=70,
             )
         )
-    candidates.extend(_generate_parent_scoped_candidates(element, hierarchy, allow_found_index_fallback=not candidates))
+    candidates.extend(
+        _generate_parent_scoped_candidates(
+            element,
+            hierarchy,
+            allow_found_index_fallback=not candidates,
+            found_index_trial_count=found_index_trial_count or FOUND_INDEX_TRIAL_COUNT,
+        )
+    )
     return candidates
 
 
@@ -110,6 +121,7 @@ def _generate_parent_scoped_candidates(
     element: ElementInfo,
     hierarchy: list[HierarchyNode] | None,
     allow_found_index_fallback: bool,
+    found_index_trial_count: int,
 ) -> list[SelectorCandidate]:
     if not hierarchy or len(hierarchy) < 2:
         return []
@@ -140,7 +152,7 @@ def _generate_parent_scoped_candidates(
             )
             order += 1
     if not candidates and allow_found_index_fallback:
-        candidates.extend(_generate_parent_found_index_fallback_candidates(element, parent))
+        candidates.extend(_generate_parent_found_index_fallback_candidates(element, parent, found_index_trial_count))
     return candidates
 
 
@@ -179,13 +191,14 @@ def _target_conditions(element: ElementInfo) -> list[tuple[str, dict[str, Any]]]
 def _generate_parent_found_index_fallback_candidates(
     element: ElementInfo,
     parent: HierarchyNode,
+    found_index_trial_count: int,
 ) -> list[SelectorCandidate]:
     parent_class_name = None if is_blank(parent.class_name) else parent.class_name
     target_class_name = None if is_blank(element.class_name) else element.class_name
     if not parent_class_name or not target_class_name:
         return []
     candidates: list[SelectorCandidate] = []
-    for found_index in range(FOUND_INDEX_TRIAL_COUNT):
+    for found_index in range(found_index_trial_count):
         parent_condition = {"class_name": parent_class_name, "found_index": found_index}
         target_condition = {"class_name": target_class_name}
         selector_text = f"{_child_window_expr('dlg', parent_condition)}.{_child_window_call(target_condition)}"

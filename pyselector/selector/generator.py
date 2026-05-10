@@ -7,11 +7,15 @@ from pyselector.selector.uia_generator import generate_uia_candidates
 from pyselector.selector.win32_generator import generate_win32_candidates
 
 
-def generate_candidates(element: ElementInfo, hierarchy: list[HierarchyNode] | None = None) -> list[SelectorCandidate]:
+def generate_candidates(
+    element: ElementInfo,
+    hierarchy: list[HierarchyNode] | None = None,
+    found_index_trial_count: int | None = None,
+) -> list[SelectorCandidate]:
     if element.backend == "win32":
-        candidates = generate_win32_candidates(element, hierarchy)
+        candidates = generate_win32_candidates(element, hierarchy, found_index_trial_count)
     elif element.backend == "uia":
-        candidates = generate_uia_candidates(element, hierarchy)
+        candidates = generate_uia_candidates(element, hierarchy, found_index_trial_count)
     else:
         candidates = []
     return sort_candidates(deduplicate_candidates(candidates))

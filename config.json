@@ -1,0 +1,21 @@
+{
+  "inspect": {
+    "delay": 5,
+    "timeout": 5,
+    "backend": "both",
+    "scope": "window",
+    "max_items": null,
+    "only_visible": true
+  },
+  "tree": {
+    "delay": 5,
+    "backend": "win32",
+    "depth": 3,
+    "max_items": 200,
+    "only_visible": true
+  },
+  "selector": {
+    "evaluation_max_items": 10,
+    "found_index_trial_count": 3
+  }
+}

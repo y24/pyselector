@@ -1,0 +1,20 @@
+{
+  "inspect": {
+    "delay": 2,
+    "timeout": 9,
+    "backend": "uia",
+    "scope": "desktop",
+    "only_visible": false
+  },
+  "tree": {
+    "delay": 1,
+    "backend": "uia",
+    "depth": 4,
+    "max_items": 50,
+    "only_visible": false
+  },
+  "selector": {
+    "evaluation_max_items": 7,
+    "found_index_trial_count": 4
+  }
+}

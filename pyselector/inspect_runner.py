@@ -32,7 +32,7 @@ def run_inspect(args: Namespace) -> int:
     info_log(f"cursor position: X={cursor.x}, Y={cursor.y}", color)
 
     inspections: list[BackendInspection] = []
-    evaluation_max_items = args.max_items or DEFAULT_SELECTOR_EVALUATION_MAX_ITEMS
+    evaluation_max_items = args.max_items or getattr(args, "selector_evaluation_max_items", DEFAULT_SELECTOR_EVALUATION_MAX_ITEMS)
     for backend in _resolve_backends(args.backend):
         inspector = _create_inspector(backend)
         try:
@@ -41,7 +41,12 @@ def run_inspect(args: Namespace) -> int:
             target_window = inspector.get_target_window(element)
             info_log(f"{backend}: 親子階層を取得中です...", color)
             hierarchy = inspector.get_hierarchy(element)
-            candidates = generate_candidates(element, hierarchy)
+            found_index_trial_count = getattr(args, "found_index_trial_count", None)
+            candidates = (
+                generate_candidates(element, hierarchy, found_index_trial_count)
+                if found_index_trial_count is not None
+                else generate_candidates(element, hierarchy)
+            )
             scope = {
                 "scope": args.scope,
                 "target_handle": target_window.handle,

@@ -31,6 +31,36 @@ pyselector tree --window-title "電卓"
 
 サブコマンドを指定しない場合は、`inspect` が使用されます。
 
+## 設定
+
+カレントディレクトリに `config.json` を置くと、CLI オプションの既定値を変更できます。明示した CLI オプションは `config.json` より優先されます。
+
+```json
+{
+  "inspect": {
+    "delay": 5,
+    "timeout": 5,
+    "backend": "both",
+    "scope": "window",
+    "max_items": null,
+    "only_visible": true
+  },
+  "tree": {
+    "delay": 5,
+    "backend": "win32",
+    "depth": 3,
+    "max_items": 200,
+    "only_visible": true
+  },
+  "selector": {
+    "evaluation_max_items": 10,
+    "found_index_trial_count": 3
+  }
+}
+```
+
+別の場所の設定ファイルを使う場合は、環境変数 `PYSELECTOR_CONFIG` にパスを指定できます。
+
 ## Inspect
 
 `inspect` は設定された遅延時間だけ待機し、現在のカーソル位置を読み取ったうえで、カーソル下の UI 要素を Win32 と UIA のバックエンドで調査します。
