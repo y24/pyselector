@@ -3,6 +3,7 @@ from argparse import Namespace
 from pyselector import inspect_runner
 from pyselector.model.element_info import ElementInfo
 from pyselector.model.inspection_result import CursorPosition
+from pyselector.model.selector_candidate import SelectorCandidate, SelectorEvaluation
 from pyselector.model.target_window import TargetWindowInfo
 
 
@@ -47,6 +48,20 @@ class ClassNameOnlyInspector:
         return [], False
 
 
+class SuccessfulInspector:
+    def __init__(self, backend):
+        self.backend = backend
+
+    def element_from_point(self, x, y):
+        return ElementInfo(backend=self.backend)
+
+    def get_target_window(self, element):
+        return TargetWindowInfo(backend=self.backend, handle=100)
+
+    def get_hierarchy(self, element):
+        return []
+
+
 def test_inspect_logs_timeout_before_countdown(monkeypatch, capsys):
     monkeypatch.setattr(inspect_runner, "wait_with_countdown", lambda delay, color=False: None)
     monkeypatch.setattr(inspect_runner, "get_cursor_position", lambda: CursorPosition(10, 20))
@@ -60,7 +75,7 @@ def test_inspect_logs_timeout_before_countdown(monkeypatch, capsys):
     assert result == 1
     assert lines[:3] == [
         "[INFO] pyselector started",
-        "[INFO] selector validation timeout: 12 sec",
+        "[INFO] selector validation total timeout: 12 sec",
         "[INFO] countdown: 5 sec",
     ]
     assert "[INFO] selector hit count limit: 10" not in lines
@@ -95,3 +110,52 @@ def test_inspect_does_not_evaluate_class_name_only_candidate(monkeypatch, capsys
     capsys.readouterr()
     assert result == 0
     assert inspector.conditions == []
+
+
+def test_inspect_logs_hit_candidate_count_after_evaluation(monkeypatch, capsys):
+    candidate = SelectorCandidate(
+        backend="win32",
+        selector_text='dlg.child_window(class_name="Button")',
+        selector_kind="win32_class_name",
+        condition={"class_name": "Button"},
+    )
+    evaluations = [
+        SelectorEvaluation(candidate=candidate, hits=1),
+        SelectorEvaluation(candidate=candidate, hits=0),
+        SelectorEvaluation(candidate=candidate, hits=None, status="timeout"),
+    ]
+
+    monkeypatch.setattr(inspect_runner, "wait_with_countdown", lambda delay, color=False: None)
+    monkeypatch.setattr(inspect_runner, "get_cursor_position", lambda: CursorPosition(10, 20))
+    monkeypatch.setattr(inspect_runner, "_create_inspector", lambda backend: SuccessfulInspector(backend))
+    monkeypatch.setattr(inspect_runner, "generate_candidates", lambda element, hierarchy: [candidate, candidate, candidate])
+    monkeypatch.setattr(inspect_runner, "evaluate_candidates", lambda *args, **kwargs: evaluations)
+    monkeypatch.setattr(inspect_runner, "append_found_index_candidates", lambda candidates, evaluations, element: candidates)
+    monkeypatch.setattr(inspect_runner, "sort_candidates", lambda candidates: candidates)
+    monkeypatch.setattr(inspect_runner, "deduplicate_candidates", lambda candidates: candidates)
+    monkeypatch.setattr(inspect_runner, "attach_warnings", lambda evaluations, element, detail: None)
+    monkeypatch.setattr(inspect_runner, "build_code_snippet", lambda backend, target_window, evaluations: "")
+
+    result = inspect_runner.run_inspect(
+        Namespace(delay=0, timeout=12, backend="both", detail=False, scope="window", only_visible=False, max_items=None)
+    )
+
+    lines = capsys.readouterr().out.splitlines()
+    assert result == 0
+    for backend in ["win32", "uia"]:
+        assert f"[INFO] {backend}: セレクター候補の評価が完了しました。ヒット候補: 1件" in lines
+        assert f"[INFO] {backend}: セレクター候補の再評価が完了しました。ヒット候補: 1件" in lines
+
+
+def test_failed_parent_found_index_trial_is_excluded_from_results():
+    candidate = SelectorCandidate(
+        backend="win32",
+        selector_text='dlg.child_window(class_name="ReBarWindow32", found_index=2).child_window(class_name="ToolbarWindow32")',
+        selector_kind="win32_parent_class_name_found_index_target_class_name",
+        condition={"class_name": "ToolbarWindow32"},
+        uses_found_index=True,
+        uses_parent_scope=True,
+    )
+    evaluation = SelectorEvaluation(candidate=candidate, hits=None, status="timeout")
+
+    assert inspect_runner._exclude_unmatched_evaluations([evaluation]) == []

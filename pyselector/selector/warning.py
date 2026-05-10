@@ -17,7 +17,7 @@ def build_warnings(evaluation: SelectorEvaluation, element: ElementInfo, detail:
     if evaluation.status == "error":
         warnings.append("セレクター評価に失敗しました")
     if evaluation.status == "timeout":
-        warnings.append("セレクター評価がタイムアウトしました")
+        return ["セレクター評価がタイムアウトしました"]
     if evaluation.hits == 0:
         warnings.append("この候補では対象要素にヒットしません")
     if evaluation.hits is not None and evaluation.hits > 1:

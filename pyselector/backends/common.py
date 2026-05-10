@@ -223,19 +223,29 @@ class PywinautoInspectorMixin:
     ) -> tuple[list[ElementInfo], bool, int | None]:
         if not steps:
             return [], False, None
+        if any("found_index" in step for step in steps):
+            return self._find_elements_child_window_chain(scope, steps)
         try:
             current_wrappers = [self._scope_root(scope)]
             parent_hits: int | None = None
             reached_limit = False
             for index, condition in enumerate(steps):
                 next_wrappers = []
+                step_condition = dict(condition)
+                found_index = step_condition.pop("found_index", None)
                 for wrapper in current_wrappers:
                     try:
                         if max_items is None:
-                            found_wrappers = wrapper.descendants(**condition)
+                            found_wrappers = wrapper.descendants(**step_condition)
                             found_reached_limit = False
                         else:
-                            found_wrappers, found_reached_limit = self._find_wrappers_limited(wrapper, condition, max_items)
+                            found_wrappers, found_reached_limit = self._find_wrappers_limited(wrapper, step_condition, max_items)
+                        if found_index is not None:
+                            try:
+                                found_wrappers = [found_wrappers[int(found_index)]]
+                                found_reached_limit = False
+                            except (IndexError, TypeError, ValueError):
+                                found_wrappers = []
                         next_wrappers.extend(found_wrappers)
                         reached_limit = reached_limit or found_reached_limit
                     except Exception:
@@ -249,6 +259,20 @@ class PywinautoInspectorMixin:
             return [element_from_wrapper(w, self.backend_name) for w in current_wrappers], reached_limit, parent_hits
         except Exception:
             return [], False, None
+
+    def _find_elements_child_window_chain(
+        self,
+        scope: dict[str, Any],
+        steps: list[dict[str, Any]],
+    ) -> tuple[list[ElementInfo], bool, int | None]:
+        try:
+            current = self._scope_root(scope)
+            for condition in steps:
+                current = current.child_window(**condition)
+            wrapper = current.wrapper_object() if hasattr(current, "wrapper_object") else current
+            return [element_from_wrapper(wrapper, self.backend_name)], False, 1
+        except Exception:
+            return [], False, 0
 
     def _find_wrappers_limited(self, root: Any, condition: dict[str, Any], max_items: int) -> tuple[list[Any], bool]:
         if self.backend_name == "win32":

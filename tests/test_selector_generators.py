@@ -129,3 +129,43 @@ def test_win32_candidates_include_parent_scoped_edit_selector():
     )
     assert parent_candidate.uses_parent_scope is True
     assert parent_candidate.uses_control_id is False
+
+
+def test_win32_candidates_try_parent_found_index_when_no_stable_parent_scope_candidate():
+    element = ElementInfo(
+        backend="win32",
+        class_name="Edit",
+        control_id=1001,
+    )
+    hierarchy = [
+        HierarchyNode(depth=0, class_name="Afx:00400000:8:00010003:00000006:00010B7B"),
+        HierarchyNode(depth=1, class_name="ComboBox", control_id=1019),
+        HierarchyNode(depth=2, class_name="Edit", control_id=1001),
+    ]
+
+    candidates = generate_candidates(element, hierarchy)
+    selector_texts = [candidate.selector_text for candidate in candidates]
+
+    assert 'dlg.child_window(class_name="ComboBox", found_index=1).child_window(class_name="Edit")' in selector_texts
+    assert len(candidates) == 3
+    assert all(candidate.uses_found_index for candidate in candidates)
+    assert all("control_id" not in candidate.selector_text for candidate in candidates)
+
+
+def test_uia_candidates_try_parent_found_index_when_only_class_names_are_available():
+    element = ElementInfo(
+        backend="uia",
+        class_name="Edit",
+    )
+    hierarchy = [
+        HierarchyNode(depth=0, class_name="#32769"),
+        HierarchyNode(depth=1, class_name="ComboBox"),
+        HierarchyNode(depth=2, class_name="Edit"),
+    ]
+
+    candidates = generate_candidates(element, hierarchy)
+    selector_texts = [candidate.selector_text for candidate in candidates]
+
+    assert 'dlg.child_window(class_name="ComboBox", found_index=1).child_window(class_name="Edit")' in selector_texts
+    assert len(candidates) == 3
+    assert all(candidate.uses_found_index for candidate in candidates)

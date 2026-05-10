@@ -25,7 +25,7 @@ DEFAULT_SELECTOR_EVALUATION_MAX_ITEMS = 10
 def run_inspect(args: Namespace) -> int:
     color = _use_color()
     info_log("pyselector started", color)
-    info_log(f"selector validation timeout: {args.timeout} sec", color)
+    info_log(f"selector validation total timeout: {args.timeout} sec", color)
     info_log(f"countdown: {args.delay} sec", color)
     wait_with_countdown(args.delay, color)
     cursor = get_cursor_position()
@@ -49,9 +49,20 @@ def run_inspect(args: Namespace) -> int:
             }
             info_log(f"{backend}: セレクター候補を評価中です... ({len(candidates)}件)", color)
             evaluations = evaluate_candidates(candidates, inspector, scope, args.timeout, evaluation_max_items)
+            info_log(f"{backend}: セレクター候補の評価が完了しました。ヒット候補: {_count_hit_evaluations(evaluations)}件", color)
             candidates = deduplicate_candidates(sort_candidates(append_found_index_candidates(candidates, evaluations, element)))
             info_log(f"{backend}: セレクター候補を再評価中です... ({len(candidates)}件)", color)
-            evaluations = evaluate_candidates(candidates, inspector, scope, args.timeout, evaluation_max_items)
+            evaluations = evaluate_candidates(
+                candidates,
+                inspector,
+                scope,
+                args.timeout,
+                evaluation_max_items,
+                target=element,
+                cursor_position=cursor,
+                stop_after_first_found_index_match=True,
+            )
+            info_log(f"{backend}: セレクター候補の再評価が完了しました。ヒット候補: {_count_hit_evaluations(evaluations)}件", color)
             attach_warnings(evaluations, element, args.detail)
             evaluations = _exclude_unmatched_evaluations(evaluations)
             snippet = build_code_snippet(backend, target_window, evaluations)
@@ -129,7 +140,22 @@ def _find_backend(inspections: list[BackendInspection], backend: str) -> Backend
 
 
 def _exclude_unmatched_evaluations(evaluations: list[SelectorEvaluation]) -> list[SelectorEvaluation]:
-    return [evaluation for evaluation in evaluations if evaluation.hits != 0]
+    return [
+        evaluation
+        for evaluation in evaluations
+        if evaluation.hits != 0 and not _is_failed_parent_found_index_trial(evaluation)
+    ]
+
+
+def _is_failed_parent_found_index_trial(evaluation: SelectorEvaluation) -> bool:
+    return (
+        evaluation.candidate.selector_kind.endswith("_parent_class_name_found_index_target_class_name")
+        and evaluation.status != "success"
+    )
+
+
+def _count_hit_evaluations(evaluations: list[SelectorEvaluation]) -> int:
+    return sum(1 for evaluation in evaluations if evaluation.hits is not None and evaluation.hits > 0)
 
 
 def _use_color() -> bool:

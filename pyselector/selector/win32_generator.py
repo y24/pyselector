@@ -7,6 +7,8 @@ from pyselector.model.hierarchy import HierarchyNode
 from pyselector.model.selector_candidate import SelectorCandidate, SelectorStep
 from pyselector.utils.text import escape_python_string, is_blank
 
+FOUND_INDEX_TRIAL_COUNT = 3
+
 
 def generate_win32_candidates(element: ElementInfo, hierarchy: list[HierarchyNode] | None = None) -> list[SelectorCandidate]:
     title = None if is_blank(element.window_text) else element.window_text
@@ -36,7 +38,7 @@ def generate_win32_candidates(element: ElementInfo, hierarchy: list[HierarchyNod
                 display_order=70,
             )
         )
-    candidates.extend(_generate_parent_scoped_candidates(element, hierarchy))
+    candidates.extend(_generate_parent_scoped_candidates(element, hierarchy, allow_found_index_fallback=not candidates))
     return candidates
 
 
@@ -69,6 +71,7 @@ def build_win32_found_index_candidate(base: SelectorCandidate, found_index: int)
 def _generate_parent_scoped_candidates(
     element: ElementInfo,
     hierarchy: list[HierarchyNode] | None,
+    allow_found_index_fallback: bool,
 ) -> list[SelectorCandidate]:
     if not hierarchy or len(hierarchy) < 2:
         return []
@@ -97,6 +100,8 @@ def _generate_parent_scoped_candidates(
                 )
             )
             order += 1
+    if not candidates and allow_found_index_fallback:
+        candidates.extend(_generate_parent_found_index_fallback_candidates(element, parent))
     return candidates
 
 
@@ -118,6 +123,38 @@ def _target_conditions(element: ElementInfo) -> list[tuple[str, dict[str, Any]]]
     if title:
         conditions.append(("title", {"title": title}))
     return conditions[:3]
+
+
+def _generate_parent_found_index_fallback_candidates(
+    element: ElementInfo,
+    parent: HierarchyNode,
+) -> list[SelectorCandidate]:
+    parent_class_name = None if is_blank(parent.class_name) else parent.class_name
+    target_class_name = None if is_blank(element.class_name) else element.class_name
+    if not parent_class_name or not target_class_name:
+        return []
+    candidates: list[SelectorCandidate] = []
+    for found_index in range(FOUND_INDEX_TRIAL_COUNT):
+        parent_condition = {"class_name": parent_class_name, "found_index": found_index}
+        target_condition = {"class_name": target_class_name}
+        selector_text = f"{_child_window_expr('dlg', parent_condition)}.{_child_window_call(target_condition)}"
+        candidates.append(
+            SelectorCandidate(
+                backend="win32",
+                selector_text=selector_text,
+                selector_kind="win32_parent_class_name_found_index_target_class_name",
+                condition=target_condition,
+                steps=[
+                    SelectorStep(role="ancestor", condition=parent_condition),
+                    SelectorStep(role="target", condition=target_condition),
+                ],
+                uses_class_name=True,
+                uses_found_index=True,
+                uses_parent_scope=True,
+                display_order=90 + found_index,
+            )
+        )
+    return candidates
 
 
 def _child_window_expr(prefix: str, condition: dict[str, Any]) -> str:
