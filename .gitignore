@@ -2,9 +2,9 @@ ElementFinder/*
 __pycache__/
 *.py[cod]
 .pytest_cache/
+pytest-cache-files/
 pytest-cache-files-*/
 pyselector.egg-info/*
-_caches/
 build/
 dist/
 *.egg-info/
