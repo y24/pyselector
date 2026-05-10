@@ -25,8 +25,10 @@ DEFAULT_SELECTOR_EVALUATION_MAX_ITEMS = 10
 def run_inspect(args: Namespace) -> int:
     color = _use_color()
     info_log("pyselector started", color)
+    config_path = getattr(args, "config_path", None)
+    if config_path is not None:
+        info_log(f"{config_path.name} loaded", color)
     info_log(f"selector validation total timeout: {args.timeout} sec", color)
-    info_log(f"countdown: {args.delay} sec", color)
     wait_with_countdown(args.delay, color)
     cursor = get_cursor_position()
     info_log(f"cursor position: X={cursor.x}, Y={cursor.y}", color)

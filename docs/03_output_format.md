@@ -229,7 +229,6 @@ H = B - T
 
 ```text
 [INFO] pyselector started
-[INFO] countdown: 5 sec
 ```
 
 ## 5.2 カウントダウン
@@ -774,7 +773,6 @@ UIAの例。
 
 ```text
 [INFO] pyselector started
-[INFO] countdown: 5 sec
 [INFO] cursor position: X=636, Y=2240
 
 [Target Window]

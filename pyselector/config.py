@@ -43,6 +43,7 @@ class AppConfig:
     inspect: InspectConfig = InspectConfig()
     tree: TreeConfig = TreeConfig()
     selector: SelectorConfig = SelectorConfig()
+    loaded_path: Path | None = None
 
 
 def load_config() -> AppConfig:
@@ -95,6 +96,7 @@ def _build_config(raw: dict[str, Any], path: Path) -> AppConfig:
             evaluation_max_items=_positive_int(selector, "evaluation_max_items", 10, path),
             found_index_trial_count=_positive_int(selector, "found_index_trial_count", 3, path),
         ),
+        loaded_path=path,
     )
 
 

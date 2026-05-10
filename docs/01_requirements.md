@@ -720,7 +720,6 @@ dlg.child_window(control_type="Button", found_index=3)
 
 ```text
 [INFO] pyselector started
-[INFO] countdown: 5 sec
 [INFO] cursor position: X=636, Y=2240
 
 [Target Window]

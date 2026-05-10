@@ -19,6 +19,7 @@ def test_load_config_reads_values_from_env_path(monkeypatch):
     assert config.tree.depth == 4
     assert config.selector.evaluation_max_items == 7
     assert config.selector.found_index_trial_count == 4
+    assert config.loaded_path == FIXTURES / "custom_config.json"
 
 
 def test_cli_uses_config_defaults_for_inspect(monkeypatch):
@@ -42,6 +43,7 @@ def test_cli_uses_config_defaults_for_inspect(monkeypatch):
     assert args.only_visible is False
     assert args.selector_evaluation_max_items == 7
     assert args.found_index_trial_count == 4
+    assert args.config_path == FIXTURES / "custom_config.json"
 
 
 def test_cli_arguments_override_config(monkeypatch):

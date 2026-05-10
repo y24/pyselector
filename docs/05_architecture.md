@@ -1310,7 +1310,6 @@ pip install .
 
 ```text
 [INFO] pyselector started
-[INFO] countdown: 5 sec
 [INFO] cursor position: X=636, Y=2240
 ```
 

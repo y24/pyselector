@@ -1,4 +1,5 @@
 from argparse import Namespace
+from pathlib import Path
 
 from pyselector import inspect_runner
 from pyselector.model.element_info import ElementInfo
@@ -73,13 +74,39 @@ def test_inspect_logs_timeout_before_countdown(monkeypatch, capsys):
 
     lines = capsys.readouterr().out.splitlines()
     assert result == 1
-    assert lines[:3] == [
+    assert lines[:2] == [
         "[INFO] pyselector started",
         "[INFO] selector validation total timeout: 12 sec",
-        "[INFO] countdown: 5 sec",
     ]
     assert "[INFO] selector hit count limit: 10" not in lines
     assert "[INFO] uia: カーソル下の要素を取得中です..." not in lines
+
+
+def test_inspect_logs_loaded_config_after_start(monkeypatch, capsys):
+    monkeypatch.setattr(inspect_runner, "wait_with_countdown", lambda delay, color=False: None)
+    monkeypatch.setattr(inspect_runner, "get_cursor_position", lambda: CursorPosition(10, 20))
+    monkeypatch.setattr(inspect_runner, "_create_inspector", lambda backend: FailingInspector())
+
+    result = inspect_runner.run_inspect(
+        Namespace(
+            delay=5,
+            timeout=12,
+            backend="uia",
+            detail=False,
+            scope="window",
+            only_visible=False,
+            max_items=None,
+            config_path=Path("config.json"),
+        )
+    )
+
+    lines = capsys.readouterr().out.splitlines()
+    assert result == 1
+    assert lines[:3] == [
+        "[INFO] pyselector started",
+        "[INFO] config.json loaded",
+        "[INFO] selector validation total timeout: 12 sec",
+    ]
 
 
 def test_inspect_does_not_evaluate_control_type_only_candidate(monkeypatch, capsys):

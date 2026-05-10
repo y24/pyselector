@@ -62,6 +62,7 @@ def main(argv: list[str] | None = None) -> int:
         args.only_visible = _resolve_only_visible(args.only_visible, args.include_hidden, config.inspect.only_visible)
         args.selector_evaluation_max_items = config.selector.evaluation_max_items
         args.found_index_trial_count = config.selector.found_index_trial_count
+        args.config_path = config.loaded_path
         return run_inspect(args)
     except KeyboardInterrupt:
         return EXIT_INTERRUPTED
