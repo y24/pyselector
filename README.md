@@ -96,3 +96,14 @@ pyselector inspect --delay 5 --backend both --scope window
 ```bash
 pyselector tree --window-title "電卓" --backend uia --depth 3
 ```
+
+## テスト
+
+pytest を使ってテストを実行します。pytest が未インストールの場合は、先にインストールしてください。
+
+```bash
+pip install pytest
+python -m pytest
+```
+
+`pyproject.toml` でテスト対象は `tests` ディレクトリに設定されています。pytest の一時ファイルとキャッシュは `_caches` 配下に作成されます。
