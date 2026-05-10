@@ -2,8 +2,6 @@
 
 pyselector は、Windows の UI 要素を調査し、pywinauto のセレクター候補を生成する CLI ツールです。
 
-pywinauto による自動化でデスクトップ UI 要素を特定する必要がある、QA エンジニア、テスト自動化開発者、RPA スクリプト作成者向けです。
-
 ## インストール
 
 ```bash
@@ -90,7 +88,3 @@ pyselector inspect --delay 5 --backend both --scope window
 ```bash
 pyselector tree --window-title "電卓" --backend uia --depth 3
 ```
-
-## 注意事項
-
-この初期バージョンでは、JSON 出力、ファイル出力、クリップボードへのコピー、GUI モード、常駐モード、クリックや入力などの UI 操作は意図的に提供していません。このツールは、調査、セレクター候補、ヒット数の確認に重点を置いています。
