@@ -169,3 +169,51 @@ def test_uia_candidates_try_parent_found_index_when_only_class_names_are_availab
     assert 'dlg.child_window(class_name="ComboBox", found_index=1).child_window(class_name="Edit")' in selector_texts
     assert len(candidates) == 3
     assert all(candidate.uses_found_index for candidate in candidates)
+
+
+def test_uia_candidates_can_force_parent_found_index_when_regular_candidates_exist():
+    element = ElementInfo(
+        backend="uia",
+        window_text="開く",
+        control_type="Button",
+        class_name="Button",
+    )
+    hierarchy = [
+        HierarchyNode(depth=0, class_name="#32770", control_type="Window"),
+        HierarchyNode(depth=1, class_name="Button", window_text="開く", control_type="Button"),
+    ]
+
+    normal_selector_texts = [candidate.selector_text for candidate in generate_candidates(element, hierarchy)]
+    fallback_selector_texts = [
+        candidate.selector_text
+        for candidate in generate_candidates(element, hierarchy, include_parent_found_index_fallback=True)
+    ]
+
+    fallback_selector = 'dlg.child_window(class_name="#32770", found_index=1).child_window(class_name="Button")'
+    assert fallback_selector not in normal_selector_texts
+    assert fallback_selector in fallback_selector_texts
+
+
+def test_uia_forced_parent_found_index_can_use_auto_id_target_when_class_name_is_blank():
+    element = ElementInfo(
+        backend="uia",
+        window_text="開く",
+        automation_id="DropDown",
+        control_type="Button",
+    )
+    hierarchy = [
+        HierarchyNode(depth=0, class_name="#32769", control_type="Pane"),
+        HierarchyNode(depth=1, class_name="Afx:00400000:8:00010003:00000006:00010B7B", control_type="Window"),
+        HierarchyNode(depth=2, class_name="ComboBox", automation_id="1019", control_type="ComboBox"),
+        HierarchyNode(depth=3, window_text="開く", automation_id="DropDown", control_type="Button"),
+    ]
+
+    selector_texts = [
+        candidate.selector_text
+        for candidate in generate_candidates(element, hierarchy, include_parent_found_index_fallback=True)
+    ]
+
+    assert (
+        'dlg.child_window(class_name="ComboBox", found_index=1)'
+        '.child_window(auto_id="DropDown", control_type="Button")'
+    ) in selector_texts

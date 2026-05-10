@@ -14,6 +14,7 @@ def generate_win32_candidates(
     element: ElementInfo,
     hierarchy: list[HierarchyNode] | None = None,
     found_index_trial_count: int | None = None,
+    include_parent_found_index_fallback: bool = False,
 ) -> list[SelectorCandidate]:
     title = None if is_blank(element.window_text) else element.window_text
     class_name = None if is_blank(element.class_name) else element.class_name
@@ -46,7 +47,7 @@ def generate_win32_candidates(
         _generate_parent_scoped_candidates(
             element,
             hierarchy,
-            allow_found_index_fallback=not candidates,
+            allow_found_index_fallback=include_parent_found_index_fallback or not candidates,
             found_index_trial_count=found_index_trial_count or FOUND_INDEX_TRIAL_COUNT,
         )
     )
@@ -112,7 +113,7 @@ def _generate_parent_scoped_candidates(
                 )
             )
             order += 1
-    if not candidates and allow_found_index_fallback:
+    if allow_found_index_fallback:
         candidates.extend(_generate_parent_found_index_fallback_candidates(element, parent, found_index_trial_count))
     return candidates
 

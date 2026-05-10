@@ -174,12 +174,74 @@ def test_inspect_logs_hit_candidate_count_after_evaluation(monkeypatch, capsys):
         assert f"[INFO] {backend}: セレクター候補の再評価が完了しました。ヒット候補: 1件" in lines
 
 
+def test_inspect_adds_parent_found_index_fallback_when_no_single_hit(monkeypatch, capsys):
+    base_candidate = SelectorCandidate(
+        backend="uia",
+        selector_text='dlg.child_window(title="開く", control_type="Button")',
+        selector_kind="uia_title_control_type",
+        condition={"title": "開く", "control_type": "Button"},
+    )
+    fallback_candidate = SelectorCandidate(
+        backend="uia",
+        selector_text='dlg.child_window(class_name="#32770", found_index=1).child_window(class_name="Button")',
+        selector_kind="uia_parent_class_name_found_index_target_class_name",
+        condition={"class_name": "Button"},
+        uses_found_index=True,
+        uses_parent_scope=True,
+    )
+    include_fallback_flags = []
+    evaluated_counts = []
+
+    def fake_generate_candidates(element, hierarchy, found_index_trial_count=None, include_parent_found_index_fallback=False):
+        include_fallback_flags.append(include_parent_found_index_fallback)
+        return [base_candidate, fallback_candidate] if include_parent_found_index_fallback else [base_candidate]
+
+    def fake_evaluate_candidates(candidates, *args, **kwargs):
+        evaluated_counts.append(len(candidates))
+        return [
+            SelectorEvaluation(candidate=candidate, hits=1 if candidate is fallback_candidate else 2)
+            for candidate in candidates
+        ]
+
+    monkeypatch.setattr(inspect_runner, "wait_with_countdown", lambda delay, color=False: None)
+    monkeypatch.setattr(inspect_runner, "get_cursor_position", lambda: CursorPosition(10, 20))
+    monkeypatch.setattr(inspect_runner, "_create_inspector", lambda backend: SuccessfulInspector(backend))
+    monkeypatch.setattr(inspect_runner, "generate_candidates", fake_generate_candidates)
+    monkeypatch.setattr(inspect_runner, "evaluate_candidates", fake_evaluate_candidates)
+    monkeypatch.setattr(inspect_runner, "append_found_index_candidates", lambda candidates, evaluations, element: candidates)
+    monkeypatch.setattr(inspect_runner, "attach_warnings", lambda evaluations, element, detail: None)
+    monkeypatch.setattr(inspect_runner, "build_code_snippet", lambda backend, target_window, evaluations: "")
+
+    result = inspect_runner.run_inspect(
+        Namespace(delay=0, timeout=12, backend="uia", detail=False, scope="window", only_visible=False, max_items=None)
+    )
+
+    capsys.readouterr()
+    assert result == 0
+    assert include_fallback_flags == [False, True]
+    assert evaluated_counts == [1, 2]
+
+
 def test_failed_parent_found_index_trial_is_excluded_from_results():
     candidate = SelectorCandidate(
         backend="win32",
         selector_text='dlg.child_window(class_name="ReBarWindow32", found_index=2).child_window(class_name="ToolbarWindow32")',
         selector_kind="win32_parent_class_name_found_index_target_class_name",
         condition={"class_name": "ToolbarWindow32"},
+        uses_found_index=True,
+        uses_parent_scope=True,
+    )
+    evaluation = SelectorEvaluation(candidate=candidate, hits=None, status="timeout")
+
+    assert inspect_runner._exclude_unmatched_evaluations([evaluation]) == []
+
+
+def test_failed_uia_parent_found_index_trial_is_excluded_from_results():
+    candidate = SelectorCandidate(
+        backend="uia",
+        selector_text='dlg.child_window(class_name="ComboBox", found_index=2).child_window(auto_id="DropDown", control_type="Button")',
+        selector_kind="uia_parent_class_name_found_index_target_auto_id_control_type",
+        condition={"auto_id": "DropDown", "control_type": "Button"},
         uses_found_index=True,
         uses_parent_scope=True,
     )

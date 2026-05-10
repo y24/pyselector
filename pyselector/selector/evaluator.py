@@ -146,7 +146,7 @@ def _contains_point(element: ElementInfo, cursor_position: CursorPosition) -> bo
 
 
 def _is_parent_found_index_trial(candidate: SelectorCandidate) -> bool:
-    return candidate.selector_kind.endswith("_parent_class_name_found_index_target_class_name")
+    return "_parent_class_name_found_index_target_" in candidate.selector_kind
 
 
 def elements_match(left: ElementInfo, right: ElementInfo) -> bool:

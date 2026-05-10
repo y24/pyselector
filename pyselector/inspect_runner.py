@@ -57,6 +57,18 @@ def run_inspect(args: Namespace) -> int:
             info_log(f"{backend}: セレクター候補を評価中です... ({len(candidates)}件)", color)
             evaluations = evaluate_candidates(candidates, inspector, scope, args.timeout, evaluation_max_items)
             info_log(f"{backend}: セレクター候補の評価が完了しました。ヒット候補: {_count_hit_evaluations(evaluations)}件", color)
+            if not _has_single_hit_evaluation(evaluations):
+                fallback_candidates = (
+                    generate_candidates(
+                        element,
+                        hierarchy,
+                        found_index_trial_count,
+                        include_parent_found_index_fallback=True,
+                    )
+                    if found_index_trial_count is not None
+                    else generate_candidates(element, hierarchy, include_parent_found_index_fallback=True)
+                )
+                candidates = deduplicate_candidates(sort_candidates(candidates + fallback_candidates))
             candidates = deduplicate_candidates(sort_candidates(append_found_index_candidates(candidates, evaluations, element)))
             info_log(f"{backend}: セレクター候補を再評価中です... ({len(candidates)}件)", color)
             evaluations = evaluate_candidates(
@@ -156,13 +168,17 @@ def _exclude_unmatched_evaluations(evaluations: list[SelectorEvaluation]) -> lis
 
 def _is_failed_parent_found_index_trial(evaluation: SelectorEvaluation) -> bool:
     return (
-        evaluation.candidate.selector_kind.endswith("_parent_class_name_found_index_target_class_name")
+        "_parent_class_name_found_index_target_" in evaluation.candidate.selector_kind
         and evaluation.status != "success"
     )
 
 
 def _count_hit_evaluations(evaluations: list[SelectorEvaluation]) -> int:
     return sum(1 for evaluation in evaluations if evaluation.hits is not None and evaluation.hits > 0)
+
+
+def _has_single_hit_evaluation(evaluations: list[SelectorEvaluation]) -> bool:
+    return any(evaluation.hits == 1 for evaluation in evaluations)
 
 
 def _use_color() -> bool:

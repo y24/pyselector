@@ -244,3 +244,38 @@ def test_evaluate_found_index_candidates_accept_cursor_containing_rectangle():
 
     assert [evaluation.hits for evaluation in evaluations] == [0, 1]
     assert inspector.calls == 2
+
+
+def test_evaluate_uia_parent_found_index_candidates_stop_after_first_match():
+    inspector = SequencedChainInspector()
+    candidates = [
+        SelectorCandidate(
+            backend="uia",
+            selector_text=(
+                f'dlg.child_window(class_name="ComboBox", found_index={index})'
+                '.child_window(auto_id="DropDown", control_type="Button")'
+            ),
+            selector_kind="uia_parent_class_name_found_index_target_auto_id_control_type",
+            condition={"auto_id": "DropDown", "control_type": "Button"},
+            steps=[
+                SelectorStep(role="ancestor", condition={"class_name": "ComboBox", "found_index": index}),
+                SelectorStep(role="target", condition={"auto_id": "DropDown", "control_type": "Button"}),
+            ],
+            uses_found_index=True,
+            uses_parent_scope=True,
+        )
+        for index in range(3)
+    ]
+
+    evaluations = evaluate_candidates(
+        candidates,
+        inspector,
+        {},
+        timeout_sec=1,
+        max_items=None,
+        target=ElementInfo(backend="uia", automation_id="DropDown", control_type="Button", handle=200),
+        stop_after_first_found_index_match=True,
+    )
+
+    assert [evaluation.hits for evaluation in evaluations] == [0, 1]
+    assert inspector.calls == 2

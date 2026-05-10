@@ -14,6 +14,7 @@ def generate_uia_candidates(
     element: ElementInfo,
     hierarchy: list[HierarchyNode] | None = None,
     found_index_trial_count: int | None = None,
+    include_parent_found_index_fallback: bool = False,
 ) -> list[SelectorCandidate]:
     title = None if is_blank(element.window_text) else element.window_text
     auto_id = None if is_blank(element.automation_id) else element.automation_id
@@ -95,7 +96,7 @@ def generate_uia_candidates(
         _generate_parent_scoped_candidates(
             element,
             hierarchy,
-            allow_found_index_fallback=not candidates,
+            allow_found_index_fallback=include_parent_found_index_fallback or not candidates,
             found_index_trial_count=found_index_trial_count or FOUND_INDEX_TRIAL_COUNT,
         )
     )
@@ -151,7 +152,7 @@ def _generate_parent_scoped_candidates(
                 )
             )
             order += 1
-    if not candidates and allow_found_index_fallback:
+    if allow_found_index_fallback:
         candidates.extend(_generate_parent_found_index_fallback_candidates(element, parent, found_index_trial_count))
     return candidates
 
@@ -195,29 +196,39 @@ def _generate_parent_found_index_fallback_candidates(
 ) -> list[SelectorCandidate]:
     parent_class_name = None if is_blank(parent.class_name) else parent.class_name
     target_class_name = None if is_blank(element.class_name) else element.class_name
-    if not parent_class_name or not target_class_name:
+    if not parent_class_name:
+        return []
+    target_conditions = _target_conditions(element)
+    if target_class_name:
+        target_conditions.append(("class_name", {"class_name": target_class_name}))
+    if not target_conditions:
         return []
     candidates: list[SelectorCandidate] = []
-    for found_index in range(found_index_trial_count):
-        parent_condition = {"class_name": parent_class_name, "found_index": found_index}
-        target_condition = {"class_name": target_class_name}
-        selector_text = f"{_child_window_expr('dlg', parent_condition)}.{_child_window_call(target_condition)}"
-        candidates.append(
-            SelectorCandidate(
-                backend="uia",
-                selector_text=selector_text,
-                selector_kind="uia_parent_class_name_found_index_target_class_name",
-                condition=target_condition,
-                steps=[
-                    SelectorStep(role="ancestor", condition=parent_condition),
-                    SelectorStep(role="target", condition=target_condition),
-                ],
-                uses_class_name=True,
-                uses_found_index=True,
-                uses_parent_scope=True,
-                display_order=90 + found_index,
+    order = 90
+    for target_kind, target_condition in target_conditions:
+        for found_index in range(found_index_trial_count):
+            parent_condition = {"class_name": parent_class_name, "found_index": found_index}
+            selector_text = f"{_child_window_expr('dlg', parent_condition)}.{_child_window_call(target_condition)}"
+            candidates.append(
+                SelectorCandidate(
+                    backend="uia",
+                    selector_text=selector_text,
+                    selector_kind=f"uia_parent_class_name_found_index_target_{target_kind}",
+                    condition=target_condition,
+                    steps=[
+                        SelectorStep(role="ancestor", condition=parent_condition),
+                        SelectorStep(role="target", condition=target_condition),
+                    ],
+                    uses_title=("title" in target_condition),
+                    uses_auto_id=("auto_id" in target_condition),
+                    uses_control_type=("control_type" in target_condition),
+                    uses_class_name=True,
+                    uses_found_index=True,
+                    uses_parent_scope=True,
+                    display_order=order,
+                )
             )
-        )
+            order += 1
     return candidates
 
 

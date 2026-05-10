@@ -11,11 +11,22 @@ def generate_candidates(
     element: ElementInfo,
     hierarchy: list[HierarchyNode] | None = None,
     found_index_trial_count: int | None = None,
+    include_parent_found_index_fallback: bool = False,
 ) -> list[SelectorCandidate]:
     if element.backend == "win32":
-        candidates = generate_win32_candidates(element, hierarchy, found_index_trial_count)
+        candidates = generate_win32_candidates(
+            element,
+            hierarchy,
+            found_index_trial_count,
+            include_parent_found_index_fallback,
+        )
     elif element.backend == "uia":
-        candidates = generate_uia_candidates(element, hierarchy, found_index_trial_count)
+        candidates = generate_uia_candidates(
+            element,
+            hierarchy,
+            found_index_trial_count,
+            include_parent_found_index_fallback,
+        )
     else:
         candidates = []
     return sort_candidates(deduplicate_candidates(candidates))
