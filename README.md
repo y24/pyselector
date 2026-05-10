@@ -39,10 +39,10 @@ pyselector tree --window-title "電卓"
 
 ## 設定
 
-カレントディレクトリに `config.json` を置くと、内部で持っているデフォルト値を上書きできます。設定値の優先順位は次のとおりです。
+カレントディレクトリに `pyselector_config.json` を置くと、内部で持っているデフォルト値を上書きできます。設定値の優先順位は次のとおりです。
 
 1. コマンドラインで明示した CLI オプション
-2. `config.json`（`pyselector` コマンド実行時のカレントディレクトリ）
+2. `pyselector_config.json`（`pyselector` コマンド実行時のカレントディレクトリ）
 3. 内部デフォルト値
 
 ```json

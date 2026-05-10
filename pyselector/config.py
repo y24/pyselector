@@ -9,7 +9,7 @@ from typing import Any
 from pyselector.utils.errors import ArgumentError
 
 
-CONFIG_FILE_NAME = "config.json"
+CONFIG_FILE_NAME = "pyselector_config.json"
 CONFIG_ENV_VAR = "PYSELECTOR_CONFIG"
 
 

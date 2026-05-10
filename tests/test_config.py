@@ -22,6 +22,18 @@ def test_load_config_reads_values_from_env_path(monkeypatch):
     assert config.loaded_path == FIXTURES / "custom_config.json"
 
 
+def test_load_config_reads_pyselector_config_from_current_directory(monkeypatch, tmp_path):
+    config_path = tmp_path / "pyselector_config.json"
+    config_path.write_text('{"inspect": {"delay": 1}}', encoding="utf-8")
+    monkeypatch.delenv("PYSELECTOR_CONFIG", raising=False)
+    monkeypatch.chdir(tmp_path)
+
+    config = load_config()
+
+    assert config.inspect.delay == 1
+    assert config.loaded_path == config_path
+
+
 def test_cli_uses_config_defaults_for_inspect(monkeypatch):
     captured = {}
     monkeypatch.setenv("PYSELECTOR_CONFIG", str(FIXTURES / "custom_config.json"))

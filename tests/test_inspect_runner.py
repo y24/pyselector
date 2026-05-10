@@ -96,7 +96,7 @@ def test_inspect_logs_loaded_config_after_start(monkeypatch, capsys):
             scope="window",
             only_visible=False,
             max_items=None,
-            config_path=Path("config.json"),
+            config_path=Path("pyselector_config.json"),
         )
     )
 
@@ -104,7 +104,7 @@ def test_inspect_logs_loaded_config_after_start(monkeypatch, capsys):
     assert result == 1
     assert lines[:3] == [
         "[INFO] pyselector started",
-        "[INFO] config.json loaded",
+        "[INFO] pyselector_config.json loaded",
         "[INFO] selector validation total timeout: 12 sec",
     ]
 
