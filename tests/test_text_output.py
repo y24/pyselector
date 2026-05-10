@@ -1,9 +1,10 @@
 from pyselector.model.element_info import ElementInfo
+from pyselector.model.hierarchy import HierarchyNode
 from pyselector.model.inspection_result import BackendInspection, CursorPosition, InspectionResult
 from pyselector.model.rectangle import RectangleInfo
 from pyselector.model.selector_candidate import SelectorCandidate, SelectorEvaluation
 from pyselector.model.target_window import TargetWindowInfo
-from pyselector.output.text_output import format_inspection_result, format_selector_candidates
+from pyselector.output.text_output import format_hierarchy, format_inspection_result, format_selector_candidates
 
 
 def test_inspection_output_contains_core_sections():
@@ -71,6 +72,36 @@ def test_backend_output_omits_process_fields_from_element_info():
     assert "  process_id: 12345" in target_section
     assert "process_name" not in backend_section
     assert "process_id" not in backend_section
+
+
+def test_hierarchy_output_omits_control_id_and_shows_uia_control_type():
+    win32_nodes = [
+        HierarchyNode(depth=0, window_text="OK", class_name="Button", control_id=1, control_type="Button"),
+    ]
+    uia_nodes = [
+        HierarchyNode(depth=0, window_text="OK", class_name="Button", control_id=1, control_type="Button"),
+    ]
+
+    win32_output = format_hierarchy("win32", win32_nodes, detail=False)
+    uia_output = format_hierarchy("uia", uia_nodes, detail=False)
+
+    assert "control_id=1" not in win32_output
+    assert "control_id=1" not in uia_output
+    assert 'control_type="Button"' not in win32_output
+    assert 'control_type="Button"' in uia_output
+
+
+def test_hierarchy_output_shows_friendly_class_name_only_when_different():
+    nodes = [
+        HierarchyNode(depth=0, class_name="Button", friendly_class_name="Button"),
+        HierarchyNode(depth=1, class_name="AfxWnd", friendly_class_name="Custom Control"),
+    ]
+
+    output = format_hierarchy("win32", nodes, detail=False)
+
+    assert '0 Button' in output
+    assert 'friendly_class_name="Button"' not in output
+    assert 'friendly_class_name="Custom Control"' in output
 
 
 def test_selector_candidates_output_excludes_zero_hits():

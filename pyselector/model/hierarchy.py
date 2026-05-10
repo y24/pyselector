@@ -12,6 +12,7 @@ class HierarchyNode:
     control_type: str | None = None
     automation_id: str | None = None
     class_name: str | None = None
+    friendly_class_name: str | None = None
     control_id: int | None = None
     handle: int | None = None
     rectangle: RectangleInfo | None = None

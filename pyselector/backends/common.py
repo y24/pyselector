@@ -106,6 +106,7 @@ def hierarchy_node_from_wrapper(wrapper: Any, backend: str, depth: int) -> Hiera
         control_type=info.control_type,
         automation_id=info.automation_id,
         class_name=info.class_name,
+        friendly_class_name=info.friendly_class_name,
         control_id=info.control_id,
         handle=info.handle,
         rectangle=info.rectangle,

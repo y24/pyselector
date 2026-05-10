@@ -102,13 +102,7 @@ def format_hierarchy(
         return "\n".join(lines)
     for node in nodes:
         kind = node.control_type or node.class_name or "Element"
-        attrs = []
-        if node.automation_id:
-            attrs.append(f'auto_id="{node.automation_id}"')
-        if node.class_name:
-            attrs.append(f'class_name="{node.class_name}"')
-        if node.control_id is not None:
-            attrs.append(f"control_id={node.control_id}")
+        attrs = _hierarchy_attrs(backend, node)
         if detail:
             if node.handle is not None:
                 attrs.append(f"handle={format_handle(node.handle)}")
@@ -147,13 +141,7 @@ def format_tree_result(result: TreeResult, detail: bool = False, color: bool = F
     lines = [_heading("Tree", color, level=1), _heading(label, color, level=2)]
     for node in result.nodes:
         kind = node.control_type or node.class_name or "Element"
-        attrs = []
-        if node.class_name:
-            attrs.append(f'class_name="{node.class_name}"')
-        if node.automation_id:
-            attrs.append(f'auto_id="{node.automation_id}"')
-        if node.control_id is not None:
-            attrs.append(f"control_id={node.control_id}")
+        attrs = _hierarchy_attrs(result.backend, node)
         if detail and node.rectangle is not None:
             attrs.append(f"rectangle={format_rectangle(node.rectangle)}")
         suffix = ("  " + " ".join(attrs)) if attrs else ""
@@ -174,6 +162,19 @@ def _heading(text: str, color: bool, level: int) -> str:
 
 def _backend_label(backend: str) -> str:
     return "Win32" if backend == "win32" else "UIA"
+
+
+def _hierarchy_attrs(backend: str, node: HierarchyNode) -> list[str]:
+    attrs = []
+    if backend == "uia" and node.control_type:
+        attrs.append(f'control_type="{node.control_type}"')
+    if node.automation_id:
+        attrs.append(f'auto_id="{node.automation_id}"')
+    if node.class_name:
+        attrs.append(f'class_name="{node.class_name}"')
+    if node.friendly_class_name and node.friendly_class_name != node.class_name:
+        attrs.append(f'friendly_class_name="{node.friendly_class_name}"')
+    return attrs
 
 
 def _format_hits(evaluation: SelectorEvaluation) -> str:
