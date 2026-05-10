@@ -14,6 +14,14 @@ pip install .
 pip install -e .
 ```
 
+## アンインストール
+
+`pyselector` コマンドを無効にしたい場合は、インストールした Python 環境で次を実行します。
+
+```bash
+pip uninstall pyselector
+```
+
 ## コマンド
 
 ```bash
