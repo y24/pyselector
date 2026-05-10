@@ -654,7 +654,7 @@ from pywinauto import Desktop
 
 dlg = Desktop(backend="win32").window(title="電卓")
 target = dlg.child_window(control_id=1, class_name="Button")
-target.click()
+target.wait("visible", timeout=10).click()
 ```
 
 ## 10.3 UIAの表示例
@@ -666,7 +666,7 @@ from pywinauto import Desktop
 
 dlg = Desktop(backend="uia").window(title="電卓")
 target = dlg.child_window(auto_id="num1Button", control_type="Button")
-target.click()
+target.wait("visible", timeout=10).click()
 ```
 
 ## 10.4 使用する候補
@@ -680,7 +680,7 @@ target.click()
 クリック確認をすぐ行えるよう、コードスニペットの末尾には以下を表示する。
 
 ```python
-target.click()
+target.wait("visible", timeout=10).click()
 ```
 
 クリック以外の入力操作は表示しない。

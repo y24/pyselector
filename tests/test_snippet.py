@@ -21,5 +21,5 @@ def test_code_snippet_clicks_target_at_end():
         'from pywinauto import Desktop\n'
         'dlg = Desktop(backend="uia").window(title="Calculator")\n'
         'target = dlg.child_window(auto_id="num1Button", control_type="Button")\n'
-        "target.click()"
+        'target.wait("visible", timeout=10).click()'
     )

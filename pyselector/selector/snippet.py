@@ -14,7 +14,12 @@ def build_code_snippet(
     if candidate is None:
         return None
     window_expr = _window_expression(backend, target_window)
-    return f"from pywinauto import Desktop\n{window_expr}\ntarget = {candidate.candidate.selector_text}\ntarget.click()"
+    return (
+        f"from pywinauto import Desktop\n"
+        f"{window_expr}\n"
+        f"target = {candidate.candidate.selector_text}\n"
+        'target.wait("visible", timeout=10).click()'
+    )
 
 
 def choose_snippet_candidate(evaluations: list[SelectorEvaluation]) -> SelectorEvaluation | None:

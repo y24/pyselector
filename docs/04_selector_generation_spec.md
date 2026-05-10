@@ -1010,7 +1010,7 @@ from pywinauto import Desktop
 
 dlg = Desktop(backend="win32").window(title="電卓")
 target = dlg.child_window(title="OK", class_name="Button")
-target.click()
+target.wait("visible", timeout=10).click()
 ```
 
 UIA。
@@ -1020,7 +1020,7 @@ from pywinauto import Desktop
 
 dlg = Desktop(backend="uia").window(title="電卓")
 target = dlg.child_window(auto_id="num1Button", control_type="Button")
-target.click()
+target.wait("visible", timeout=10).click()
 ```
 
 ---
