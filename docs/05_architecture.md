@@ -1310,7 +1310,7 @@ pip install .
 
 ```text
 [INFO] pyselector started
-[INFO] cursor position: X=636, Y=2240
+[INFO] 座標を決定しました。 X=636, Y=2240
 ```
 
 ## 14.2 verbose時

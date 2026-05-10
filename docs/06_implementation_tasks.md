@@ -387,7 +387,7 @@ def get_cursor_position() -> CursorPosition:
 `pyselector inspect --delay 0` 実行時に以下が表示できる。
 
 ```text
-[INFO] cursor position: X=..., Y=...
+[INFO] 座標を決定しました。 X=..., Y=...
 ```
 
 ---

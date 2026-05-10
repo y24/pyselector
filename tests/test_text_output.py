@@ -24,7 +24,7 @@ def test_inspection_output_contains_core_sections():
 
     output = format_inspection_result(result)
 
-    assert output.startswith("[INFO] cursor position: X=10, Y=20")
+    assert output.startswith("[INFO] 座標を決定しました。 X=10, Y=20")
     assert "[Backend]" in output
     assert "  [Win32]" in output
     assert "    rectangle: L=1, T=2, R=11, B=22, W=10, H=20" in output
@@ -41,7 +41,7 @@ def test_inspection_output_can_color_headings():
 
     assert "\033[1m\033[36m[Target Window]\033[0m" in output
     assert "\033[94m[Win32]\033[0m" in output
-    assert output.startswith("\033[90m[INFO] cursor position: X=10, Y=20\033[0m")
+    assert output.startswith("\033[90m[INFO] 座標を決定しました。 X=10, Y=20\033[0m")
 
 
 def test_inspection_output_can_omit_cursor_line():

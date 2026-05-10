@@ -255,7 +255,7 @@ H = B - T
 カウントダウン後に取得したカーソル座標を表示する。
 
 ```text
-[INFO] cursor position: X=636, Y=2240
+[INFO] 座標を決定しました。 X=636, Y=2240
 ```
 
 ---
@@ -773,7 +773,7 @@ UIAの例。
 
 ```text
 [INFO] pyselector started
-[INFO] cursor position: X=636, Y=2240
+[INFO] 座標を決定しました。 X=636, Y=2240
 
 [Target Window]
   title: 電卓

@@ -22,7 +22,7 @@ def format_inspection_result(
 ) -> str:
     lines: list[str] = []
     if include_cursor:
-        lines.extend([format_info(f"cursor position: X={result.cursor_position.x}, Y={result.cursor_position.y}", color), ""])
+        lines.extend([format_info(f"座標を決定しました。 X={result.cursor_position.x}, Y={result.cursor_position.y}", color), ""])
     target = _first_target(result)
     lines.extend(format_target_window(target, color).splitlines())
     lines.append("")

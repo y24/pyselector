@@ -720,7 +720,7 @@ dlg.child_window(control_type="Button", found_index=3)
 
 ```text
 [INFO] pyselector started
-[INFO] cursor position: X=636, Y=2240
+[INFO] 座標を決定しました。 X=636, Y=2240
 
 [Target Window]
   title: 電卓
