@@ -87,7 +87,7 @@ def _build_config(raw: dict[str, Any], path: Path) -> AppConfig:
         ),
         tree=TreeConfig(
             delay=_non_negative_int(tree, "delay", 5, path),
-            backend=_choice(tree, "backend", "win32", {"win32", "uia"}, path),
+            backend=_choice(tree, "backend", "win32", {"win32", "uia", "both"}, path),
             depth=_non_negative_int(tree, "depth", 3, path),
             max_items=_positive_int(tree, "max_items", 200, path),
             only_visible=_bool(tree, "only_visible", True, path),

@@ -148,6 +148,7 @@ def format_tree_result(result: TreeResult, detail: bool = False, color: bool = F
         lines.append(f"    {node.depth} {kind:<7} {quote_text(node.window_text)}{suffix}")
     if result.reached_limit:
         lines.append("[WARN] max-items に達したため、以降の要素表示を省略しました。")
+    lines.extend(f"[WARN] {warning}" for warning in result.warnings)
     return "\n".join(lines) + "\n"
 
 

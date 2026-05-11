@@ -3,6 +3,7 @@ from pathlib import Path
 
 from pyselector import inspect_runner
 from pyselector.model.element_info import ElementInfo
+from pyselector.model.hierarchy import HierarchyNode
 from pyselector.model.inspection_result import CursorPosition
 from pyselector.model.selector_candidate import SelectorCandidate, SelectorEvaluation
 from pyselector.model.target_window import TargetWindowInfo
@@ -61,6 +62,17 @@ class SuccessfulInspector:
 
     def get_hierarchy(self, element):
         return []
+
+
+class TreeInspector:
+    def __init__(self, backend):
+        self.backend = backend
+
+    def find_window_by_title(self, title, title_re):
+        return ElementInfo(backend=self.backend, window_text=title)
+
+    def walk_tree(self, root, depth, max_items, only_visible):
+        return [HierarchyNode(depth=0, window_text=root.window_text, class_name="Window")], False
 
 
 def test_inspect_logs_timeout_before_countdown(monkeypatch, capsys):
@@ -248,3 +260,40 @@ def test_failed_uia_parent_found_index_trial_is_excluded_from_results():
     evaluation = SelectorEvaluation(candidate=candidate, hits=None, status="timeout")
 
     assert inspect_runner._exclude_unmatched_evaluations([evaluation]) == []
+
+
+def test_tree_backend_both_prints_win32_and_uia(monkeypatch, capsys):
+    monkeypatch.setattr(inspect_runner, "_create_inspector", lambda backend: TreeInspector(backend))
+
+    result = inspect_runner.run_tree(
+        Namespace(
+            backend="both",
+            cursor=False,
+            window_title="電卓",
+            title_re=False,
+            depth=3,
+            max_items=200,
+            only_visible=True,
+            detail=False,
+            delay=0,
+        )
+    )
+
+    output = capsys.readouterr().out
+    assert result == 0
+    assert "  [Win32]" in output
+    assert "  [UIA]" in output
+
+
+def test_win32_modern_host_tree_warns_to_try_uia():
+    nodes = [
+        HierarchyNode(depth=0, window_text="電卓", class_name="ApplicationFrameWindow"),
+        HierarchyNode(depth=1, window_text="電卓", class_name="Windows.UI.Core.CoreWindow"),
+    ]
+
+    warnings = inspect_runner._tree_warnings("win32", nodes, requested_depth=3, reached_limit=False)
+
+    assert warnings == [
+        "Win32 BackendではWindows標準アプリの内部UIが浅く見えることがあります。"
+        "詳細なツリーは --backend uia --depth 5 を試してください。"
+    ]

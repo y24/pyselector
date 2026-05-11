@@ -28,7 +28,7 @@ def build_parser(config: AppConfig | None = None) -> argparse.ArgumentParser:
     tree.add_argument("--cursor", action="store_true")
     tree.add_argument("--window-title")
     tree.add_argument("--title-re", action="store_true")
-    tree.add_argument("--backend", choices=["win32", "uia"], default=config.tree.backend)
+    tree.add_argument("--backend", choices=["win32", "uia", "both"], default=config.tree.backend)
     tree.add_argument("--depth", type=_non_negative_int, default=config.tree.depth)
     tree.add_argument("--max-items", type=_positive_int, default=config.tree.max_items)
     tree.add_argument("--only-visible", action="store_true", default=None)

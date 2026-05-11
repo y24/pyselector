@@ -40,5 +40,6 @@ class TreeResult:
     root: ElementInfo | None
     nodes: list[HierarchyNode]
     reached_limit: bool
+    warnings: list[str] = field(default_factory=list)
     status: str = "success"
     message: str | None = None
