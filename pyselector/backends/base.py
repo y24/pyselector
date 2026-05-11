@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Any
+from typing import Any, Callable
 
 from pyselector.model.element_info import ElementInfo
 from pyselector.model.hierarchy import HierarchyNode
@@ -32,5 +32,12 @@ class BackendInspector(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def walk_tree(self, root: ElementInfo, depth: int, max_items: int, only_visible: bool) -> tuple[list[HierarchyNode], bool]:
+    def walk_tree(
+        self,
+        root: ElementInfo,
+        depth: int,
+        max_items: int,
+        only_visible: bool,
+        progress_callback: Callable[[int, int], None] | None = None,
+    ) -> tuple[list[HierarchyNode], bool]:
         raise NotImplementedError

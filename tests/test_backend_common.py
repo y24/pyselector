@@ -1,4 +1,5 @@
 from pyselector.backends.common import PywinautoInspectorMixin
+from pyselector.model.element_info import ElementInfo
 
 
 class FakeElementInfo:
@@ -59,3 +60,28 @@ def test_find_elements_stops_after_limit():
 
     assert len(matches) == 2
     assert reached_limit is True
+
+
+def test_walk_tree_reports_progress():
+    root = FakeWrapper(
+        text="root",
+        children=[
+            FakeWrapper(text="child1"),
+            FakeWrapper(text="child2"),
+        ],
+    )
+    inspector = FakeInspector(root)
+    inspector._last_wrapper = root
+    progress = []
+
+    nodes, reached_limit = inspector.walk_tree(
+        ElementInfo(backend="uia"),
+        depth=1,
+        max_items=10,
+        only_visible=False,
+        progress_callback=lambda done, total: progress.append((done, total)),
+    )
+
+    assert reached_limit is False
+    assert len(nodes) == 3
+    assert progress == [(1, 10), (2, 10), (3, 10)]

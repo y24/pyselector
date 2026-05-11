@@ -71,7 +71,9 @@ class TreeInspector:
     def find_window_by_title(self, title, title_re):
         return ElementInfo(backend=self.backend, window_text=title)
 
-    def walk_tree(self, root, depth, max_items, only_visible):
+    def walk_tree(self, root, depth, max_items, only_visible, progress_callback=None):
+        if progress_callback is not None:
+            progress_callback(1, max_items)
         return [HierarchyNode(depth=0, window_text=root.window_text, class_name="Window")], False
 
 
@@ -309,5 +311,20 @@ def test_tree_logs_progress_messages(monkeypatch, capsys):
         "[INFO] pyselector started",
         "[INFO] uia: 対象ウィンドウを検索中です...",
         "[INFO] uia: UI要素ツリーを取得中です... (depth=3, max-items=50)",
-        "[INFO] uia: UI要素ツリーの取得が完了しました。表示要素: 1件",
+        "[INFO] uia: UI要素ツリー取得中... 1件完了",
+    ]
+    assert lines[4] == "[INFO] uia: UI要素ツリーの取得が完了しました。表示要素: 1件"
+
+
+def test_tree_progress_logger_reports_every_item(capsys):
+    logger = inspect_runner._tree_progress_logger("uia", color=False)
+
+    for done in range(1, 4):
+        logger(done, 50)
+
+    lines = capsys.readouterr().out.splitlines()
+    assert lines == [
+        "[INFO] uia: UI要素ツリー取得中... 1件完了",
+        "[INFO] uia: UI要素ツリー取得中... 2件完了",
+        "[INFO] uia: UI要素ツリー取得中... 3件完了",
     ]

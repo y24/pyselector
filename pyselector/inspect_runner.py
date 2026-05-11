@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 import sys
 from argparse import Namespace
-from typing import Any
+from typing import Any, Callable
 
 from pyselector.backends.uia_inspector import UiaInspector
 from pyselector.backends.win32_inspector import Win32Inspector
@@ -129,7 +129,13 @@ def run_tree(args: Namespace) -> int:
                 info_log(f"{backend}: 対象ウィンドウを検索中です...", color)
                 root = inspector.find_window_by_title(args.window_title, args.title_re)
             info_log(f"{backend}: UI要素ツリーを取得中です... (depth={args.depth}, max-items={args.max_items})", color)
-            nodes, reached_limit = inspector.walk_tree(root, args.depth, args.max_items, args.only_visible)
+            nodes, reached_limit = inspector.walk_tree(
+                root,
+                args.depth,
+                args.max_items,
+                args.only_visible,
+                _tree_progress_logger(backend, color),
+            )
             info_log(f"{backend}: UI要素ツリーの取得が完了しました。表示要素: {len(nodes)}件", color)
             results.append(
                 TreeResult(
@@ -170,6 +176,13 @@ def _create_inspector(backend: str) -> Any:
     if backend == "uia":
         return UiaInspector()
     raise ValueError(f"unsupported backend: {backend}")
+
+
+def _tree_progress_logger(backend: str, color: bool) -> Callable[[int, int], None]:
+    def log_progress(done: int, total: int) -> None:
+        info_log(f"{backend}: UI要素ツリー取得中... {done}件完了", color)
+
+    return log_progress
 
 
 def _find_backend(inspections: list[BackendInspection], backend: str) -> BackendInspection | None:

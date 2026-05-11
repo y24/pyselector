@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import re
-from typing import Any
+from typing import Any, Callable
 
 from pyselector.model.element_info import ElementInfo
 from pyselector.model.hierarchy import HierarchyNode
@@ -328,7 +328,14 @@ class PywinautoInspectorMixin:
             raise ElementNotFoundError(f"一致するウィンドウ数が {len(matches)} 件です")
         return self._remember(matches[0])
 
-    def walk_tree(self, root: ElementInfo, depth: int, max_items: int, only_visible: bool) -> tuple[list[HierarchyNode], bool]:
+    def walk_tree(
+        self,
+        root: ElementInfo,
+        depth: int,
+        max_items: int,
+        only_visible: bool,
+        progress_callback: Callable[[int, int], None] | None = None,
+    ) -> tuple[list[HierarchyNode], bool]:
         root_wrapper = self._wrapper_for(root)
         nodes: list[HierarchyNode] = []
         reached_limit = False
@@ -340,6 +347,8 @@ class PywinautoInspectorMixin:
             if only_visible and safe_call(wrapper, "is_visible") is False:
                 return
             nodes.append(hierarchy_node_from_wrapper(wrapper, self.backend_name, current_depth))
+            if progress_callback is not None:
+                progress_callback(len(nodes), max_items)
             if len(nodes) >= max_items:
                 reached_limit = True
                 return
