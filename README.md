@@ -264,9 +264,9 @@ pyselector tree --window-title "電.*" --title-re --backend uia
   },
   "tree": {
     "delay": 5,
-    "backend": "win32",
+    "backend": "both",
     "depth": 3,
-    "max_items": 200,
+    "max_items": 50,
     "only_visible": true
   },
   "selector": {

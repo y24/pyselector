@@ -26,9 +26,9 @@ class InspectConfig:
 @dataclass(frozen=True)
 class TreeConfig:
     delay: int = 5
-    backend: str = "win32"
+    backend: str = "both"
     depth: int = 3
-    max_items: int = 200
+    max_items: int = 50
     only_visible: bool = True
 
 
@@ -87,9 +87,9 @@ def _build_config(raw: dict[str, Any], path: Path) -> AppConfig:
         ),
         tree=TreeConfig(
             delay=_non_negative_int(tree, "delay", 5, path),
-            backend=_choice(tree, "backend", "win32", {"win32", "uia", "both"}, path),
+            backend=_choice(tree, "backend", "both", {"win32", "uia", "both"}, path),
             depth=_non_negative_int(tree, "depth", 3, path),
-            max_items=_positive_int(tree, "max_items", 200, path),
+            max_items=_positive_int(tree, "max_items", 50, path),
             only_visible=_bool(tree, "only_visible", True, path),
         ),
         selector=SelectorConfig(

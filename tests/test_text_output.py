@@ -1,11 +1,10 @@
 from pyselector.model.element_info import ElementInfo
 from pyselector.model.hierarchy import HierarchyNode
-from pyselector.model.inspection_result import BackendInspection, CursorPosition, InspectionResult, TreeResult
+from pyselector.model.inspection_result import BackendInspection, CursorPosition, InspectionResult
 from pyselector.model.rectangle import RectangleInfo
 from pyselector.model.selector_candidate import SelectorCandidate, SelectorEvaluation
 from pyselector.model.target_window import TargetWindowInfo
 from pyselector.output.text_output import format_hierarchy, format_inspection_result, format_selector_candidates
-from pyselector.output.text_output import format_tree_result
 
 
 def test_inspection_output_contains_core_sections():
@@ -169,16 +168,3 @@ def test_selector_candidates_output_marks_reached_limit_with_plus():
 
     assert '    [10+] dlg.child_window(class_name="Button")' in output
 
-
-def test_tree_output_shows_warnings():
-    result = TreeResult(
-        backend="win32",
-        root=ElementInfo(backend="win32"),
-        nodes=[HierarchyNode(depth=0, window_text="電卓", class_name="ApplicationFrameWindow")],
-        reached_limit=False,
-        warnings=["詳細なツリーは --backend uia --depth 5 を試してください。"],
-    )
-
-    output = format_tree_result(result)
-
-    assert "[WARN] 詳細なツリーは --backend uia --depth 5 を試してください。" in output

@@ -559,9 +559,9 @@ pyselector tree [options]
 | `--cursor`               | カーソル下要素を起点にする       | false   |
 | `--window-title <title>` | 対象ウィンドウタイトル         | none    |
 | `--title-re`             | ウィンドウタイトルを正規表現として扱う | false   |
-| `--backend uia\|win32`   | 使用バックエンド            | `win32` |
+| `--backend uia\|win32\|both`   | 使用バックエンド            | `both` |
 | `--depth <n>`            | 探索深度                | `3`     |
-| `--max-items <n>`        | 最大表示件数              | `200`   |
+| `--max-items <n>`        | 最大表示件数              | `50`    |
 | `--only-visible`         | 可視要素のみ表示する          | true    |
 | `--detail`               | 詳細情報を表示する           | false   |
 

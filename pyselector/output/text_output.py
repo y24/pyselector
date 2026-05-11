@@ -130,15 +130,13 @@ def format_code_snippet(backend: str, snippet: str, color: bool = False) -> str:
     return f"{_heading(_backend_label(backend), color, level=2)}\n{snippet}"
 
 
-def format_tree_result(result: TreeResult, detail: bool = False, color: bool = False) -> str:
+def format_tree_result(result: TreeResult, detail: bool = False, color: bool = False, include_heading: bool = True) -> str:
     label = _backend_label(result.backend)
     if result.status != "success":
-        return (
-            f"{_heading('Tree', color, level=1)}\n"
-            f"{_heading(label, color, level=2)}\n"
-            f"    status: failed\n    message: {format_value(result.message)}\n"
-        )
-    lines = [_heading("Tree", color, level=1), _heading(label, color, level=2)]
+        lines = _tree_header_lines(label, color, include_heading)
+        lines.extend(["    status: failed", f"    message: {format_value(result.message)}"])
+        return "\n".join(lines) + "\n"
+    lines = _tree_header_lines(label, color, include_heading)
     for node in result.nodes:
         kind = node.control_type or node.class_name or "Element"
         attrs = _hierarchy_attrs(result.backend, node)
@@ -148,8 +146,15 @@ def format_tree_result(result: TreeResult, detail: bool = False, color: bool = F
         lines.append(f"    {node.depth} {kind:<7} {quote_text(node.window_text)}{suffix}")
     if result.reached_limit:
         lines.append("[WARN] max-items に達したため、以降の要素表示を省略しました。")
-    lines.extend(f"[WARN] {warning}" for warning in result.warnings)
     return "\n".join(lines) + "\n"
+
+
+def _tree_header_lines(label: str, color: bool, include_heading: bool) -> list[str]:
+    lines = []
+    if include_heading:
+        lines.append(_heading("Tree", color, level=1))
+    lines.append(_heading(label, color, level=2))
+    return lines
 
 
 def _heading(text: str, color: bool, level: int) -> str:

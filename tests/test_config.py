@@ -34,6 +34,24 @@ def test_load_config_reads_pyselector_config_from_current_directory(monkeypatch,
     assert config.loaded_path == config_path
 
 
+def test_default_tree_backend_is_both(monkeypatch):
+    monkeypatch.delenv("PYSELECTOR_CONFIG", raising=False)
+    monkeypatch.chdir(FIXTURES)
+
+    config = load_config()
+
+    assert config.tree.backend == "both"
+
+
+def test_default_tree_max_items_is_50(monkeypatch):
+    monkeypatch.delenv("PYSELECTOR_CONFIG", raising=False)
+    monkeypatch.chdir(FIXTURES)
+
+    config = load_config()
+
+    assert config.tree.max_items == 50
+
+
 def test_cli_uses_config_defaults_for_inspect(monkeypatch):
     captured = {}
     monkeypatch.setenv("PYSELECTOR_CONFIG", str(FIXTURES / "custom_config.json"))

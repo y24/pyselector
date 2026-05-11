@@ -272,7 +272,7 @@ def test_tree_backend_both_prints_win32_and_uia(monkeypatch, capsys):
             window_title="電卓",
             title_re=False,
             depth=3,
-            max_items=200,
+            max_items=50,
             only_visible=True,
             detail=False,
             delay=0,
@@ -281,19 +281,33 @@ def test_tree_backend_both_prints_win32_and_uia(monkeypatch, capsys):
 
     output = capsys.readouterr().out
     assert result == 0
+    assert output.count("[Tree]") == 1
     assert "  [Win32]" in output
     assert "  [UIA]" in output
 
 
-def test_win32_modern_host_tree_warns_to_try_uia():
-    nodes = [
-        HierarchyNode(depth=0, window_text="電卓", class_name="ApplicationFrameWindow"),
-        HierarchyNode(depth=1, window_text="電卓", class_name="Windows.UI.Core.CoreWindow"),
-    ]
+def test_tree_logs_progress_messages(monkeypatch, capsys):
+    monkeypatch.setattr(inspect_runner, "_create_inspector", lambda backend: TreeInspector(backend))
 
-    warnings = inspect_runner._tree_warnings("win32", nodes, requested_depth=3, reached_limit=False)
+    result = inspect_runner.run_tree(
+        Namespace(
+            backend="uia",
+            cursor=False,
+            window_title="電卓",
+            title_re=False,
+            depth=3,
+            max_items=50,
+            only_visible=True,
+            detail=False,
+            delay=0,
+        )
+    )
 
-    assert warnings == [
-        "Win32 BackendではWindows標準アプリの内部UIが浅く見えることがあります。"
-        "詳細なツリーは --backend uia --depth 5 を試してください。"
+    lines = capsys.readouterr().out.splitlines()
+    assert result == 0
+    assert lines[:4] == [
+        "[INFO] pyselector started",
+        "[INFO] uia: 対象ウィンドウを検索中です...",
+        "[INFO] uia: UI要素ツリーを取得中です... (depth=3, max-items=50)",
+        "[INFO] uia: UI要素ツリーの取得が完了しました。表示要素: 1件",
     ]

@@ -109,28 +109,34 @@ def run_inspect(args: Namespace) -> int:
 
 
 def run_tree(args: Namespace) -> int:
+    color = _use_color()
+    info_log("pyselector started", color)
     backends = _resolve_backends(args.backend)
     cursor = None
     if args.cursor:
-        wait_with_countdown(args.delay, _use_color())
+        wait_with_countdown(args.delay, color)
         cursor = get_cursor_position()
+        info_log(f"座標を決定しました。 X={cursor.x}, Y={cursor.y}", color)
 
     results: list[TreeResult] = []
     for backend in backends:
         inspector = _create_inspector(backend)
         try:
             if cursor is not None:
+                info_log(f"{backend}: カーソル下の起点要素を取得中です...", color)
                 root = inspector.element_from_point(cursor.x, cursor.y)
             else:
+                info_log(f"{backend}: 対象ウィンドウを検索中です...", color)
                 root = inspector.find_window_by_title(args.window_title, args.title_re)
+            info_log(f"{backend}: UI要素ツリーを取得中です... (depth={args.depth}, max-items={args.max_items})", color)
             nodes, reached_limit = inspector.walk_tree(root, args.depth, args.max_items, args.only_visible)
+            info_log(f"{backend}: UI要素ツリーの取得が完了しました。表示要素: {len(nodes)}件", color)
             results.append(
                 TreeResult(
                     backend=backend,
                     root=root,
                     nodes=nodes,
                     reached_limit=reached_limit,
-                    warnings=_tree_warnings(backend, nodes, args.depth, reached_limit),
                 )
             )
         except Exception as exc:
@@ -144,7 +150,13 @@ def run_tree(args: Namespace) -> int:
                     message=str(exc),
                 )
             )
-    print("".join(format_tree_result(result, args.detail, _use_color()) for result in results), end="")
+    print(
+        "".join(
+            format_tree_result(result, args.detail, color, include_heading=index == 0)
+            for index, result in enumerate(results)
+        ),
+        end="",
+    )
     return 0 if any(result.status == "success" for result in results) else 1
 
 
@@ -158,27 +170,6 @@ def _create_inspector(backend: str) -> Any:
     if backend == "uia":
         return UiaInspector()
     raise ValueError(f"unsupported backend: {backend}")
-
-
-def _tree_warnings(backend: str, nodes: list[Any], requested_depth: int, reached_limit: bool) -> list[str]:
-    if backend != "win32" or reached_limit or requested_depth <= 1 or not nodes:
-        return []
-    max_depth = max(node.depth for node in nodes)
-    if max_depth > 1:
-        return []
-    class_names = {node.class_name for node in nodes}
-    modern_host_classes = {
-        "ApplicationFrameWindow",
-        "ApplicationFrameTitleBarWindow",
-        "Windows.UI.Core.CoreWindow",
-        "ApplicationFrameInputSinkWindow",
-    }
-    if class_names & modern_host_classes:
-        return [
-            "Win32 BackendではWindows標準アプリの内部UIが浅く見えることがあります。"
-            "詳細なツリーは --backend uia --depth 5 を試してください。"
-        ]
-    return []
 
 
 def _find_backend(inspections: list[BackendInspection], backend: str) -> BackendInspection | None:

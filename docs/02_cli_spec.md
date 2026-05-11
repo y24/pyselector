@@ -412,9 +412,9 @@ pyselector tree [options]
 | `--cursor`         |              なし | `false` | カーソル下要素を起点にする               |
 | `--window-title`   |             文字列 |      なし | 対象ウィンドウタイトル                 |
 | `--title-re`       |              なし | `false` | `--window-title` を正規表現として扱う |
-| `--backend`        | `win32` / `uia` | `win32` | 使用するバックエンド                  |
+| `--backend`        | `win32` / `uia` / `both` | `both` | 使用するバックエンド                  |
 | `--depth`          |              数値 |     `3` | 表示する探索深度                    |
-| `--max-items`      |              件数 |   `200` | 最大表示件数                      |
+| `--max-items`      |              件数 |    `50` | 最大表示件数                      |
 | `--only-visible`   |              なし |  `true` | 可視要素のみ表示する                  |
 | `--include-hidden` |              なし | `false` | 非表示要素も表示する                  |
 | `--detail`         |              なし | `false` | 詳細情報を表示する                   |
@@ -484,7 +484,7 @@ pyselector tree --window-title "電卓" --backend uia
 win32
 ```
 
-`tree` は大量要素を表示しやすいため、既定ではWin32を使用する。
+`tree` はWin32とUIAで見える階層が異なるため、既定では両方を使用する。
 
 ---
 
@@ -515,7 +515,7 @@ pyselector tree --window-title "電卓" --max-items 300
 
 ### 仕様
 
-* 既定値は `200`
+* 既定値は `50`
 * 上限に達した場合は、その旨を表示する
 
 表示例。
