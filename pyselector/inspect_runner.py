@@ -28,7 +28,6 @@ def run_inspect(args: Namespace) -> int:
     config_path = getattr(args, "config_path", None)
     if config_path is not None:
         info_log(f"{config_path.name} loaded", color)
-    info_log(f"selector validation total timeout: {args.timeout} sec", color)
     wait_with_countdown(args.delay, color)
     cursor = get_cursor_position()
     info_log(f"座標を決定しました。 X={cursor.x}, Y={cursor.y}", color)

@@ -77,7 +77,7 @@ class TreeInspector:
         return [HierarchyNode(depth=0, window_text=root.window_text, class_name="Window")], False
 
 
-def test_inspect_logs_timeout_before_countdown(monkeypatch, capsys):
+def test_inspect_does_not_log_timeout_before_countdown(monkeypatch, capsys):
     monkeypatch.setattr(inspect_runner, "wait_with_countdown", lambda delay, color=False: None)
     monkeypatch.setattr(inspect_runner, "get_cursor_position", lambda: CursorPosition(10, 20))
     monkeypatch.setattr(inspect_runner, "_create_inspector", lambda backend: FailingInspector())
@@ -88,10 +88,8 @@ def test_inspect_logs_timeout_before_countdown(monkeypatch, capsys):
 
     lines = capsys.readouterr().out.splitlines()
     assert result == 1
-    assert lines[:2] == [
-        "[INFO] pyselector started",
-        "[INFO] selector validation total timeout: 12 sec",
-    ]
+    assert lines[:1] == ["[INFO] pyselector started"]
+    assert "[INFO] selector validation total timeout: 12 sec" not in lines
     assert "[INFO] selector hit count limit: 10" not in lines
     assert "[INFO] uia: カーソル下の要素を取得中です..." not in lines
 
@@ -116,11 +114,11 @@ def test_inspect_logs_loaded_config_after_start(monkeypatch, capsys):
 
     lines = capsys.readouterr().out.splitlines()
     assert result == 1
-    assert lines[:3] == [
+    assert lines[:2] == [
         "[INFO] pyselector started",
         "[INFO] pyselector_config.json loaded",
-        "[INFO] selector validation total timeout: 12 sec",
     ]
+    assert "[INFO] selector validation total timeout: 12 sec" not in lines
 
 
 def test_inspect_does_not_evaluate_control_type_only_candidate(monkeypatch, capsys):
