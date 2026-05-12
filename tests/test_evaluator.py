@@ -120,6 +120,11 @@ class ChainWrapper:
         return self
 
 
+class DescendantsOnlyChainWrapper(ChainWrapper):
+    def child_window(self, **condition):
+        raise AssertionError("child_window() should not be called")
+
+
 class ChainInspector(PywinautoInspectorMixin):
     backend_name = "win32"
 
@@ -148,9 +153,32 @@ def test_find_elements_chain_applies_found_index_to_intermediate_step():
     assert parent_hits == 1
 
 
-def test_find_elements_chain_uses_pywinauto_child_window_path_for_found_index():
+def test_find_elements_chain_resolves_found_index_candidate():
     edit = ChainWrapper("Edit")
     root = ChainWrapper("Root", [ChainWrapper("ComboBox"), ChainWrapper("ComboBox", [edit])])
+    inspector = ChainInspector(root)
+
+    matches, reached_limit, parent_hits = inspector.find_elements_chain(
+        {},
+        [{"class_name": "ComboBox", "found_index": 1}, {"class_name": "Edit"}],
+        None,
+    )
+
+    assert len(matches) == 1
+    assert matches[0].class_name == "Edit"
+    assert reached_limit is False
+    assert parent_hits == 1
+
+
+def test_find_elements_chain_with_found_index_uses_descendants_without_child_window():
+    edit = DescendantsOnlyChainWrapper("Edit")
+    root = DescendantsOnlyChainWrapper(
+        "Root",
+        [
+            DescendantsOnlyChainWrapper("ComboBox"),
+            DescendantsOnlyChainWrapper("ComboBox", [edit]),
+        ],
+    )
     inspector = ChainInspector(root)
 
     matches, reached_limit, parent_hits = inspector.find_elements_chain(

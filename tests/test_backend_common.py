@@ -35,6 +35,11 @@ class FakeWrapper:
         return matches
 
 
+class ChildrenErrorWrapper(FakeWrapper):
+    def children(self):
+        raise AssertionError("children() should not be called")
+
+
 class FakeInspector(PywinautoInspectorMixin):
     backend_name = "uia"
 
@@ -60,6 +65,17 @@ def test_find_elements_stops_after_limit():
 
     assert len(matches) == 2
     assert reached_limit is True
+
+
+def test_find_elements_does_not_fetch_children_count_for_matches():
+    root = FakeWrapper(children=[ChildrenErrorWrapper(class_name="Button")])
+    inspector = FakeInspector(root)
+
+    matches, reached_limit = inspector.find_elements({}, {"class_name": "Button"})
+
+    assert len(matches) == 1
+    assert matches[0].children_count is None
+    assert reached_limit is False
 
 
 def test_walk_tree_reports_progress():
