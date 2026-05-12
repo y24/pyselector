@@ -1,12 +1,20 @@
 from __future__ import annotations
 
 import argparse
+import os
 import sys
+from pathlib import Path
 
 from pyselector import __version__
 from pyselector.config import AppConfig, load_config
 from pyselector.inspect_runner import run_inspect, run_tree
 from pyselector.utils.errors import EXIT_ARGUMENT_ERROR, EXIT_INTERRUPTED, EXIT_UNEXPECTED, PySelectorError
+
+
+_LOGO_PATH = Path(__file__).resolve().parent.parent / "assets" / "logo.txt"
+_RESET = "\033[0m"
+_LOGO_GRADIENT_START = (36, 210, 255)
+_LOGO_GRADIENT_END = (106, 130, 255)
 
 
 class PySelectorArgumentParser(argparse.ArgumentParser):
@@ -41,6 +49,7 @@ def build_parser(config: AppConfig | None = None) -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    _print_startup_logo()
     args_list = list(sys.argv[1:] if argv is None else argv)
     if not args_list or (args_list[0].startswith("-") and args_list[0] not in ("-h", "--help")):
         args_list.insert(0, "inspect")
@@ -100,6 +109,49 @@ def _resolve_only_visible(only_visible_arg: bool | None, include_hidden: bool, c
     if only_visible_arg is not None:
         return only_visible_arg
     return config_default
+
+
+def _print_startup_logo() -> None:
+    try:
+        logo = _LOGO_PATH.read_text(encoding="utf-8").rstrip()
+    except OSError:
+        return
+    if logo:
+        if _use_logo_color():
+            logo = _format_logo_gradient(logo)
+        print(logo)
+
+
+def _use_logo_color() -> bool:
+    return sys.stdout.isatty() and "NO_COLOR" not in os.environ
+
+
+def _format_logo_gradient(logo: str) -> str:
+    lines = logo.splitlines()
+    width = max((len(line) for line in lines), default=0)
+    return "\n".join(_format_logo_line_gradient(line, width) for line in lines)
+
+
+def _format_logo_line_gradient(line: str, width: int) -> str:
+    if not line:
+        return line
+    denominator = max(width - 1, 1)
+    parts = []
+    for index, char in enumerate(line):
+        if char == " ":
+            parts.append(char)
+            continue
+        ratio = index / denominator
+        red = _interpolate(_LOGO_GRADIENT_START[0], _LOGO_GRADIENT_END[0], ratio)
+        green = _interpolate(_LOGO_GRADIENT_START[1], _LOGO_GRADIENT_END[1], ratio)
+        blue = _interpolate(_LOGO_GRADIENT_START[2], _LOGO_GRADIENT_END[2], ratio)
+        parts.append(f"\033[38;2;{red};{green};{blue}m{char}")
+    parts.append(_RESET)
+    return "".join(parts)
+
+
+def _interpolate(start: int, end: int, ratio: float) -> int:
+    return round(start + (end - start) * ratio)
 
 
 def _non_negative_int(value: str) -> int:

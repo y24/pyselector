@@ -93,3 +93,31 @@ def test_cli_arguments_override_config(monkeypatch):
     assert args.delay == 0
     assert args.timeout == 3
     assert args.only_visible is False
+
+
+def test_cli_prints_logo_before_running_command(monkeypatch, capsys):
+    monkeypatch.setenv("PYSELECTOR_CONFIG", str(FIXTURES / "custom_config.json"))
+
+    def fake_run_inspect(args):
+        print("INSPECT START")
+        return 0
+
+    monkeypatch.setattr(cli, "run_inspect", fake_run_inspect)
+
+    result = cli.main(["inspect"])
+
+    assert result == 0
+    logo_lines = cli._LOGO_PATH.read_text(encoding="utf-8").rstrip().splitlines()
+    assert capsys.readouterr().out.splitlines()[: len(logo_lines) + 1] == logo_lines + ["INSPECT START"]
+
+
+def test_logo_gradient_uses_blue_ansi_colors():
+    output = cli._format_logo_gradient("py")
+
+    assert output == "\033[38;2;36;210;255mp\033[38;2;106;130;255my\033[0m"
+
+
+def test_logo_gradient_uses_full_logo_width_for_short_lines():
+    output = cli._format_logo_gradient("p       y\n    y")
+
+    assert output.splitlines()[1] == "    \033[38;2;71;170;255my\033[0m"
