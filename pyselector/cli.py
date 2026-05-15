@@ -53,14 +53,14 @@ def build_parser(config: AppConfig | None = None) -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     configure_runtime_warnings()
     args_list = list(sys.argv[1:] if argv is None else argv)
+    if "--json" not in args_list:
+        _print_startup_logo()
     if not args_list or (args_list[0].startswith("-") and args_list[0] not in ("-h", "--help")):
         args_list.insert(0, "inspect")
     try:
         config = load_config()
         parser = build_parser(config)
         args = parser.parse_args(args_list)
-        if not getattr(args, "json", False):
-            _print_startup_logo()
         if args.command == "version":
             print(f"pyselector {__version__}")
             return 0
