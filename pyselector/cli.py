@@ -44,6 +44,7 @@ def build_parser(config: AppConfig | None = None) -> argparse.ArgumentParser:
     tree.add_argument("--include-hidden", action="store_true")
     tree.add_argument("--detail", action="store_true")
     tree.add_argument("--delay", type=_non_negative_int, default=config.tree.delay)
+    tree.add_argument("--json", action="store_true")
 
     subparsers.add_parser("version", help="Show version")
     return parser
@@ -51,7 +52,6 @@ def build_parser(config: AppConfig | None = None) -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     configure_runtime_warnings()
-    _print_startup_logo()
     args_list = list(sys.argv[1:] if argv is None else argv)
     if not args_list or (args_list[0].startswith("-") and args_list[0] not in ("-h", "--help")):
         args_list.insert(0, "inspect")
@@ -59,6 +59,8 @@ def main(argv: list[str] | None = None) -> int:
         config = load_config()
         parser = build_parser(config)
         args = parser.parse_args(args_list)
+        if not getattr(args, "json", False):
+            _print_startup_logo()
         if args.command == "version":
             print(f"pyselector {__version__}")
             return 0
@@ -93,6 +95,7 @@ def _add_inspect_options(parser: argparse.ArgumentParser, config: AppConfig) -> 
     parser.add_argument("--backend", choices=["win32", "uia", "both"], default=config.inspect.backend)
     parser.add_argument("--scope", choices=["window", "desktop"], default=config.inspect.scope)
     parser.add_argument("--detail", action="store_true")
+    parser.add_argument("--json", action="store_true")
     parser.add_argument("--verbose", action="store_true")
     parser.add_argument("--timeout", type=_positive_int, default=config.inspect.timeout)
     parser.add_argument("--max-items", type=_positive_int, default=config.inspect.max_items)

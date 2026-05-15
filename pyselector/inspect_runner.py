@@ -13,6 +13,7 @@ from pyselector.cursor import get_cursor_position
 from pyselector.model.inspection_result import BackendInspection, CursorPosition, InspectionResult, TreeResult
 from pyselector.overlay.selector_overlay import select_point_with_overlay
 from pyselector.model.selector_candidate import SelectorEvaluation
+from pyselector.output.json_output import format_inspection_result_json, format_tree_results_json
 from pyselector.output.log_file import save_inspection_log
 from pyselector.output.text_output import format_inspection_result, format_tree_result
 from pyselector.selector.evaluator import append_found_index_candidates, evaluate_candidates
@@ -29,15 +30,18 @@ OVERLAY_CLOSE_WAIT_SECONDS = 0.05
 
 def run_inspect(args: Namespace, point_selector: Callable[[], tuple[int, int] | None] | None = None) -> int:
     color = _use_color()
-    info_log("pyselector started", color)
+    json_output = getattr(args, "json", False)
+    if not json_output:
+        info_log("pyselector started", color)
     config_path = getattr(args, "config_path", None)
-    if config_path is not None:
+    if config_path is not None and not json_output:
         info_log(f"{config_path.name} loaded", color)
     setup_dpi_awareness()
     point_selector = point_selector or select_point_with_overlay
     point = point_selector()
     if point is None:
-        info_log("選択をキャンセルしました。", color)
+        if not json_output:
+            info_log("選択をキャンセルしました。", color)
         return 1
     time.sleep(OVERLAY_CLOSE_WAIT_SECONDS)
     cursor = CursorPosition(x=point[0], y=point[1])
@@ -48,9 +52,11 @@ def run_inspect(args: Namespace, point_selector: Callable[[], tuple[int, int] | 
         inspector = _create_inspector(backend)
         try:
             element = inspector.element_from_point(cursor.x, cursor.y)
-            info_log(f"{backend}: 対象ウィンドウを特定中です...", color)
+            if not json_output:
+                info_log(f"{backend}: 対象ウィンドウを特定中です...", color)
             target_window = inspector.get_target_window(element)
-            info_log(f"{backend}: 親子階層を取得中です...", color)
+            if not json_output:
+                info_log(f"{backend}: 親子階層を取得中です...", color)
             hierarchy = inspector.get_hierarchy(element)
             found_index_trial_count = getattr(args, "found_index_trial_count", None)
             candidates = (
@@ -63,9 +69,11 @@ def run_inspect(args: Namespace, point_selector: Callable[[], tuple[int, int] | 
                 "target_handle": target_window.handle,
                 "only_visible": args.only_visible,
             }
-            info_log(f"{backend}: セレクター候補を評価中です... ({len(candidates)}件)", color)
+            if not json_output:
+                info_log(f"{backend}: セレクター候補を評価中です... ({len(candidates)}件)", color)
             evaluations = evaluate_candidates(candidates, inspector, scope, args.timeout, evaluation_max_items)
-            info_log(f"{backend}: セレクター候補の評価が完了しました。ヒット候補: {_count_hit_evaluations(evaluations)}件", color)
+            if not json_output:
+                info_log(f"{backend}: セレクター候補の評価が完了しました。ヒット候補: {_count_hit_evaluations(evaluations)}件", color)
             if not _has_single_hit_evaluation(evaluations):
                 fallback_candidates = (
                     generate_candidates(
@@ -79,7 +87,8 @@ def run_inspect(args: Namespace, point_selector: Callable[[], tuple[int, int] | 
                 )
                 candidates = deduplicate_candidates(sort_candidates(candidates + fallback_candidates))
             candidates = deduplicate_candidates(sort_candidates(append_found_index_candidates(candidates, evaluations, element)))
-            info_log(f"{backend}: セレクター候補を再評価中です... ({len(candidates)}件)", color)
+            if not json_output:
+                info_log(f"{backend}: セレクター候補を再評価中です... ({len(candidates)}件)", color)
             evaluations = evaluate_candidates(
                 candidates,
                 inspector,
@@ -90,7 +99,8 @@ def run_inspect(args: Namespace, point_selector: Callable[[], tuple[int, int] | 
                 cursor_position=cursor,
                 stop_after_first_found_index_match=True,
             )
-            info_log(f"{backend}: セレクター候補の再評価が完了しました。ヒット候補: {_count_hit_evaluations(evaluations)}件", color)
+            if not json_output:
+                info_log(f"{backend}: セレクター候補の再評価が完了しました。ヒット候補: {_count_hit_evaluations(evaluations)}件", color)
             attach_warnings(evaluations, element, args.detail)
             evaluations = _exclude_unmatched_evaluations(evaluations)
             snippet = build_code_snippet(backend, target_window, evaluations)
@@ -113,41 +123,56 @@ def run_inspect(args: Namespace, point_selector: Callable[[], tuple[int, int] | 
         win32=_find_backend(inspections, "win32"),
         uia=_find_backend(inspections, "uia"),
     )
-    output = format_inspection_result(result, args.detail, color, include_cursor=True)
+    output = (
+        format_inspection_result_json(result)
+        if json_output
+        else format_inspection_result(result, args.detail, color, include_cursor=True)
+    )
     print(output, end="")
-    save_inspection_log(result, format_inspection_result(result, args.detail, False, include_cursor=False))
+    log_output = format_inspection_result_json(result) if json_output else format_inspection_result(result, args.detail, False, include_cursor=False)
+    save_inspection_log(result, log_output, suffix=".json" if json_output else ".txt")
     return 0 if any(item.status == "success" for item in inspections) else 1
 
 
 def run_tree(args: Namespace) -> int:
     color = _use_color()
-    info_log("pyselector started", color)
+    json_output = getattr(args, "json", False)
+    if not json_output:
+        info_log("pyselector started", color)
     backends = _resolve_backends(args.backend)
     cursor = None
     if args.cursor:
-        wait_with_countdown(args.delay, color)
+        if json_output:
+            time.sleep(args.delay)
+        else:
+            wait_with_countdown(args.delay, color)
         cursor = get_cursor_position()
-        info_log(f"座標を決定しました。 X={cursor.x}, Y={cursor.y}", color)
+        if not json_output:
+            info_log(f"座標を決定しました。 X={cursor.x}, Y={cursor.y}", color)
 
     results: list[TreeResult] = []
     for backend in backends:
         inspector = _create_inspector(backend)
         try:
             if cursor is not None:
-                info_log(f"{backend}: カーソル下の起点要素を取得中です...", color)
+                if not json_output:
+                    info_log(f"{backend}: カーソル下の起点要素を取得中です...", color)
                 root = inspector.element_from_point(cursor.x, cursor.y)
             else:
-                info_log(f"{backend}: 対象ウィンドウを検索中です...", color)
+                if not json_output:
+                    info_log(f"{backend}: 対象ウィンドウを検索中です...", color)
                 root = inspector.find_window_by_title(args.window_title, args.title_re)
-            info_log(f"{backend}: UI要素ツリーを取得中です... (depth={args.depth}, max-items={args.max_items})", color)
+            if not json_output:
+                info_log(f"{backend}: UI要素ツリーを取得中です... (depth={args.depth}, max-items={args.max_items})", color)
             nodes, reached_limit = inspector.walk_tree(
                 root,
                 args.depth,
                 args.max_items,
                 args.only_visible,
-                _tree_progress_logger(backend, color),
+                None if json_output else _tree_progress_logger(backend, color),
             )
-            info_log(f"{backend}: UI要素ツリーの取得が完了しました。表示要素: {len(nodes)}件", color)
+            if not json_output:
+                info_log(f"{backend}: UI要素ツリーの取得が完了しました。表示要素: {len(nodes)}件", color)
             results.append(
                 TreeResult(
                     backend=backend,
@@ -167,13 +192,15 @@ def run_tree(args: Namespace) -> int:
                     message=str(exc),
                 )
             )
-    print(
-        "".join(
+    output = (
+        format_tree_results_json(results)
+        if json_output
+        else "".join(
             format_tree_result(result, args.detail, color, include_heading=index == 0)
             for index, result in enumerate(results)
-        ),
-        end="",
+        )
     )
+    print(output, end="")
     return 0 if any(result.status == "success" for result in results) else 1
 
 

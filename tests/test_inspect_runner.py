@@ -1,3 +1,4 @@
+import json
 from argparse import Namespace
 from pathlib import Path
 
@@ -219,7 +220,7 @@ def test_inspect_log_file_omits_cursor_line(monkeypatch, capsys):
     monkeypatch.setattr(inspect_runner, "wait_with_countdown", lambda delay, color=False: None)
     monkeypatch.setattr(inspect_runner, "get_cursor_position", lambda: CursorPosition(10, 20))
     monkeypatch.setattr(inspect_runner, "_create_inspector", lambda backend: SuccessfulInspector(backend))
-    monkeypatch.setattr(inspect_runner, "save_inspection_log", lambda result, content: saved.append(content))
+    monkeypatch.setattr(inspect_runner, "save_inspection_log", lambda result, content, **kwargs: saved.append(content))
 
     result = inspect_runner.run_inspect(
         Namespace(delay=0, timeout=12, backend="win32", detail=False, scope="window", only_visible=False, max_items=None),
@@ -231,6 +232,43 @@ def test_inspect_log_file_omits_cursor_line(monkeypatch, capsys):
     assert saved[0].startswith("[Target Window]")
     assert "[INFO] 座標を決定しました。" not in saved[0]
     assert "[INFO] 座標を決定しました。 X=10, Y=20" in capsys.readouterr().out
+
+
+def test_inspect_json_outputs_structured_data_without_info(monkeypatch, capsys):
+    saved = []
+
+    candidate = SelectorCandidate(
+        backend="win32",
+        selector_text='dlg.child_window(class_name="Button")',
+        selector_kind="win32_class_name",
+        condition={"class_name": "Button"},
+    )
+    evaluations = [SelectorEvaluation(candidate=candidate, hits=1, warnings=["ambiguous text"])]
+
+    monkeypatch.setattr(inspect_runner, "_create_inspector", lambda backend: SuccessfulInspector(backend))
+    monkeypatch.setattr(inspect_runner, "generate_candidates", lambda element, hierarchy: [candidate])
+    monkeypatch.setattr(inspect_runner, "evaluate_candidates", lambda *args, **kwargs: evaluations)
+    monkeypatch.setattr(inspect_runner, "append_found_index_candidates", lambda candidates, evaluations, element: candidates)
+    monkeypatch.setattr(inspect_runner, "sort_candidates", lambda candidates: candidates)
+    monkeypatch.setattr(inspect_runner, "deduplicate_candidates", lambda candidates: candidates)
+    monkeypatch.setattr(inspect_runner, "attach_warnings", lambda evaluations, element, detail: None)
+    monkeypatch.setattr(inspect_runner, "build_code_snippet", lambda backend, target_window, evaluations: "print('ok')")
+    monkeypatch.setattr(inspect_runner, "save_inspection_log", lambda result, content, **kwargs: saved.append((content, kwargs)))
+
+    result = inspect_runner.run_inspect(
+        Namespace(delay=0, timeout=12, backend="win32", detail=False, scope="window", only_visible=False, max_items=None, json=True),
+        point_selector=lambda: (10, 20),
+    )
+
+    output = capsys.readouterr().out
+    payload = json.loads(output)
+    assert result == 0
+    assert "[INFO]" not in output
+    assert payload["cursor_position"] == {"x": 10, "y": 20}
+    assert payload["backends"][0]["backend"] == "win32"
+    assert payload["backends"][0]["selector_candidates"][0]["hits"] == 1
+    assert json.loads(saved[0][0]) == payload
+    assert saved[0][1]["suffix"] == ".json"
 
 
 def test_inspect_adds_parent_found_index_fallback_when_no_single_hit(monkeypatch, capsys):
@@ -360,6 +398,32 @@ def test_tree_logs_progress_messages(monkeypatch, capsys):
         "[INFO] uia: UI要素ツリー取得中... 1件完了",
     ]
     assert lines[4] == "[INFO] uia: UI要素ツリーの取得が完了しました。表示要素: 1件"
+
+
+def test_tree_json_outputs_structured_data_without_info(monkeypatch, capsys):
+    monkeypatch.setattr(inspect_runner, "_create_inspector", lambda backend: TreeInspector(backend))
+
+    result = inspect_runner.run_tree(
+        Namespace(
+            backend="uia",
+            cursor=False,
+            window_title="電卓",
+            title_re=False,
+            depth=3,
+            max_items=50,
+            only_visible=True,
+            detail=False,
+            delay=0,
+            json=True,
+        )
+    )
+
+    output = capsys.readouterr().out
+    payload = json.loads(output)
+    assert result == 0
+    assert "[INFO]" not in output
+    assert payload["results"][0]["backend"] == "uia"
+    assert payload["results"][0]["nodes"][0]["window_text"] == "電卓"
 
 
 def test_tree_progress_logger_reports_every_item(capsys):

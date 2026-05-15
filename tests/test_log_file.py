@@ -114,3 +114,13 @@ def test_save_inspection_log_does_not_overwrite_same_second_file(tmp_path, monke
     assert second.name == "20260515_230102_1.txt"
     assert first.read_text(encoding="utf-8") == "FIRST"
     assert second.read_text(encoding="utf-8") == "SECOND"
+
+
+def test_save_inspection_log_uses_requested_suffix(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    result = InspectionResult(cursor_position=CursorPosition(10, 20))
+
+    path = log_file.save_inspection_log(result, '{"ok": true}', datetime(2026, 5, 15, 23, 1, 2), suffix=".json")
+
+    assert path.name == "20260515_230102.json"
+    assert path.read_text(encoding="utf-8") == '{"ok": true}'

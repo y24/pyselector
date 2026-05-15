@@ -111,6 +111,24 @@ def test_cli_prints_logo_before_running_command(monkeypatch, capsys):
     assert capsys.readouterr().out.splitlines()[: len(logo_lines) + 1] == logo_lines + ["INSPECT START"]
 
 
+def test_cli_json_suppresses_logo(monkeypatch, capsys):
+    captured = {}
+    monkeypatch.setenv("PYSELECTOR_CONFIG", str(FIXTURES / "custom_config.json"))
+
+    def fake_run_inspect(args):
+        captured["args"] = args
+        print("{}")
+        return 0
+
+    monkeypatch.setattr(cli, "run_inspect", fake_run_inspect)
+
+    result = cli.main(["inspect", "--json"])
+
+    assert result == 0
+    assert captured["args"].json is True
+    assert capsys.readouterr().out == "{}\n"
+
+
 def test_logo_gradient_uses_blue_ansi_colors():
     output = cli._format_logo_gradient("py")
 

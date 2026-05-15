@@ -11,15 +11,20 @@ INVALID_FILENAME_CHARS = '<>:"/\\|?*'
 MAX_FILENAME_PART_LENGTH = 50
 
 
-def save_inspection_log(result: InspectionResult, content: str, now: datetime | None = None) -> Path:
+def save_inspection_log(
+    result: InspectionResult,
+    content: str,
+    now: datetime | None = None,
+    suffix: str = ".txt",
+) -> Path:
     LOG_DIR.mkdir(exist_ok=True)
-    _prune_old_logs(LOG_DIR, MAX_LOG_FILES - 1)
+    _prune_old_logs(LOG_DIR, MAX_LOG_FILES - 1, suffix)
     timestamp = (now or datetime.now()).strftime("%Y%m%d_%H%M%S")
     filename_context = _filename_context(result)
     stem = f"{timestamp}_{filename_context}" if filename_context else timestamp
-    log_path = _unique_log_path(LOG_DIR / f"{stem}.txt")
+    log_path = _unique_log_path(LOG_DIR / f"{stem}{suffix}")
     log_path.write_text(content, encoding="utf-8")
-    _prune_old_logs(LOG_DIR, MAX_LOG_FILES)
+    _prune_old_logs(LOG_DIR, MAX_LOG_FILES, suffix)
     return log_path
 
 
@@ -99,9 +104,9 @@ def _unique_log_path(path: Path) -> Path:
     raise RuntimeError(f"could not create unique log file name for {path}")
 
 
-def _prune_old_logs(log_dir: Path, max_files: int) -> None:
+def _prune_old_logs(log_dir: Path, max_files: int, suffix: str = ".txt") -> None:
     log_files = sorted(
-        (path for path in log_dir.glob("*.txt") if path.is_file()),
+        (path for path in log_dir.glob(f"*{suffix}") if path.is_file()),
         key=lambda path: (path.stat().st_mtime, path.name),
     )
     for path in log_files[:-max_files]:
