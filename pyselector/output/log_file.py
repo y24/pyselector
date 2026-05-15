@@ -15,25 +15,26 @@ def save_inspection_log(result: InspectionResult, content: str, now: datetime | 
     LOG_DIR.mkdir(exist_ok=True)
     _prune_old_logs(LOG_DIR, MAX_LOG_FILES - 1)
     timestamp = (now or datetime.now()).strftime("%Y%m%d_%H%M%S")
-    log_path = _unique_log_path(LOG_DIR / f"{timestamp}_{_filename_context(result)}.txt")
+    filename_context = _filename_context(result)
+    stem = f"{timestamp}_{filename_context}" if filename_context else timestamp
+    log_path = _unique_log_path(LOG_DIR / f"{stem}.txt")
     log_path.write_text(content, encoding="utf-8")
     _prune_old_logs(LOG_DIR, MAX_LOG_FILES)
     return log_path
 
 
 def _filename_context(result: InspectionResult) -> str:
-    target_window_title = _value(_first_target_title(result))
+    target_window_title = _first_target_title(result)
     element_kind, element_title = _target_element_parts(result)
-    return "_".join(
-        [
-            _sanitize_filename_part(target_window_title),
-            _sanitize_filename_part(element_kind),
-            _sanitize_filename_part(element_title),
-        ]
-    )
+    parts = []
+    for value in [target_window_title, element_kind, element_title]:
+        part = _sanitize_filename_part(value)
+        if part:
+            parts.append(part)
+    return "_".join(parts)
 
 
-def _target_element_parts(result: InspectionResult) -> tuple[str, str]:
+def _target_element_parts(result: InspectionResult) -> tuple[str | None, str | None]:
     uia = result.uia if result.uia and result.uia.status == "success" else None
     win32 = result.win32 if result.win32 and result.win32.status == "success" else None
 
@@ -65,24 +66,27 @@ def _ordered_inspections(result: InspectionResult) -> list[BackendInspection]:
 
 
 def _value(value: object | None) -> str:
-    return str(value).strip() if value is not None and str(value).strip() else "unknown"
+    return str(value).strip() if value is not None and str(value).strip() else ""
 
 
 def _first_value(*values: object | None) -> str:
     for value in values:
         text = _value(value)
-        if text != "unknown":
+        if text:
             return text
-    return "unknown"
+    return ""
 
 
-def _sanitize_filename_part(value: str) -> str:
+def _sanitize_filename_part(value: object | None) -> str:
+    value = _value(value)
+    if not value:
+        return ""
     sanitized = "".join("_" if char in INVALID_FILENAME_CHARS or ord(char) < 32 else char for char in value)
     sanitized = "_".join(sanitized.split())
     sanitized = sanitized.strip(" ._")
     if not sanitized:
-        return "unknown"
-    return sanitized[:MAX_FILENAME_PART_LENGTH].rstrip(" ._") or "unknown"
+        return ""
+    return sanitized[:MAX_FILENAME_PART_LENGTH].rstrip(" ._")
 
 
 def _unique_log_path(path: Path) -> Path:
