@@ -8,3 +8,4 @@ pyselector.egg-info/*
 build/
 dist/
 *.egg-info/
+logs/

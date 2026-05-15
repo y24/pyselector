@@ -108,7 +108,7 @@ def format_hierarchy(
                 attrs.append(f"handle={format_handle(node.handle)}")
             if node.rectangle is not None:
                 attrs.append(f"rectangle={format_rectangle(node.rectangle)}")
-        suffix = ("  " + " ".join(attrs)) if attrs else ""
+        suffix = ("  " + ", ".join(attrs)) if attrs else ""
         lines.append(f"    {node.depth} {kind:<7} {quote_text(node.window_text)}{suffix}")
     return "\n".join(lines)
 
@@ -142,7 +142,7 @@ def format_tree_result(result: TreeResult, detail: bool = False, color: bool = F
         attrs = _hierarchy_attrs(result.backend, node)
         if detail and node.rectangle is not None:
             attrs.append(f"rectangle={format_rectangle(node.rectangle)}")
-        suffix = ("  " + " ".join(attrs)) if attrs else ""
+        suffix = ("  " + ", ".join(attrs)) if attrs else ""
         lines.append(f"    {node.depth} {kind:<7} {quote_text(node.window_text)}{suffix}")
     if result.reached_limit:
         lines.append("[WARN] max-items に達したため、以降の要素表示を省略しました。")

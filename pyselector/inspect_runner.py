@@ -13,6 +13,7 @@ from pyselector.cursor import get_cursor_position
 from pyselector.model.inspection_result import BackendInspection, CursorPosition, InspectionResult, TreeResult
 from pyselector.overlay.selector_overlay import select_point_with_overlay
 from pyselector.model.selector_candidate import SelectorEvaluation
+from pyselector.output.log_file import save_inspection_log
 from pyselector.output.text_output import format_inspection_result, format_tree_result
 from pyselector.selector.evaluator import append_found_index_candidates, evaluate_candidates
 from pyselector.selector.generator import generate_candidates, sort_candidates, deduplicate_candidates
@@ -112,7 +113,9 @@ def run_inspect(args: Namespace, point_selector: Callable[[], tuple[int, int] | 
         win32=_find_backend(inspections, "win32"),
         uia=_find_backend(inspections, "uia"),
     )
-    print(format_inspection_result(result, args.detail, color, include_cursor=True), end="")
+    output = format_inspection_result(result, args.detail, color, include_cursor=True)
+    print(output, end="")
+    save_inspection_log(result, format_inspection_result(result, args.detail, False, include_cursor=False))
     return 0 if any(item.status == "success" for item in inspections) else 1
 
 

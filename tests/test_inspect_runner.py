@@ -1,12 +1,19 @@
 from argparse import Namespace
 from pathlib import Path
 
+import pytest
+
 from pyselector import inspect_runner
 from pyselector.model.element_info import ElementInfo
 from pyselector.model.hierarchy import HierarchyNode
 from pyselector.model.inspection_result import CursorPosition
 from pyselector.model.selector_candidate import SelectorCandidate, SelectorEvaluation
 from pyselector.model.target_window import TargetWindowInfo
+
+
+@pytest.fixture(autouse=True)
+def disable_inspect_log_file(monkeypatch):
+    monkeypatch.setattr(inspect_runner, "save_inspection_log", lambda *args, **kwargs: None)
 
 
 class FailingInspector:
@@ -204,6 +211,26 @@ def test_inspect_logs_hit_candidate_count_after_evaluation(monkeypatch, capsys):
     for backend in ["win32", "uia"]:
         assert f"[INFO] {backend}: セレクター候補の評価が完了しました。ヒット候補: 1件" in lines
         assert f"[INFO] {backend}: セレクター候補の再評価が完了しました。ヒット候補: 1件" in lines
+
+
+def test_inspect_log_file_omits_cursor_line(monkeypatch, capsys):
+    saved = []
+
+    monkeypatch.setattr(inspect_runner, "wait_with_countdown", lambda delay, color=False: None)
+    monkeypatch.setattr(inspect_runner, "get_cursor_position", lambda: CursorPosition(10, 20))
+    monkeypatch.setattr(inspect_runner, "_create_inspector", lambda backend: SuccessfulInspector(backend))
+    monkeypatch.setattr(inspect_runner, "save_inspection_log", lambda result, content: saved.append(content))
+
+    result = inspect_runner.run_inspect(
+        Namespace(delay=0, timeout=12, backend="win32", detail=False, scope="window", only_visible=False, max_items=None),
+        point_selector=lambda: (10, 20),
+    )
+
+    assert result == 0
+    assert saved
+    assert saved[0].startswith("[Target Window]")
+    assert "[INFO] 座標を決定しました。" not in saved[0]
+    assert "[INFO] 座標を決定しました。 X=10, Y=20" in capsys.readouterr().out
 
 
 def test_inspect_adds_parent_found_index_fallback_when_no_single_hit(monkeypatch, capsys):

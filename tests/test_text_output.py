@@ -104,6 +104,22 @@ def test_hierarchy_output_shows_friendly_class_name_only_when_different():
     assert 'friendly_class_name="Custom Control"' in output
 
 
+def test_hierarchy_output_separates_multiple_attrs_with_commas():
+    nodes = [
+        HierarchyNode(
+            depth=0,
+            window_text="デスクトップ 1",
+            control_type="Pane",
+            class_name="#32769",
+            friendly_class_name="Pane",
+        ),
+    ]
+
+    output = format_hierarchy("uia", nodes, detail=False)
+
+    assert '0 Pane    "デスクトップ 1"  control_type="Pane", class_name="#32769", friendly_class_name="Pane"' in output
+
+
 def test_selector_candidates_output_excludes_zero_hits():
     zero_hit = SelectorEvaluation(
         candidate=SelectorCandidate(
@@ -167,4 +183,3 @@ def test_selector_candidates_output_marks_reached_limit_with_plus():
     output = format_selector_candidates("win32", [candidate])
 
     assert '    [10+] dlg.child_window(class_name="Button")' in output
-
