@@ -34,8 +34,8 @@ pip uninstall pyselector
 ## 基本的な使い方
 
 1. 調査したい Windows アプリを開いておく
-2. ターミナルで `pyselector` を実行すると、5秒のカウントダウンが開始される
-3. カウントダウン中に、調査したいボタンや入力欄へマウスカーソルを移動する
+2. ターミナルで `pyselector` を実行すると、画面全体に半透明オーバーレイが表示される
+3. 調査したいボタンや入力欄を左クリックする
 4. 出力された `[Selector Candidates]` または `[Code Snippet]` を pywinauto のコードにコピーして使う
 
 最短では `pyselector` コマンドだけで使えます。`inspect` モードで実行されます。
@@ -50,15 +50,7 @@ pyselector inspect
 
 ## `inspect` モードのオプション
 
-カウントダウン時間を調整したい場合:
-
-```bash
-# 即時に取得
-pyselector inspect --delay 0
-
-# 10秒後に延長
-pyselector inspect --delay 10
-```
+`inspect` は起動直後にオーバーレイを表示します。左クリックで座標を確定し、Esc でキャンセルできます。
 
 win32/uia バックエンドいずれか片方だけで調べる場合:
 
@@ -264,7 +256,6 @@ pyselector tree --window-title "電.*" --title-re --backend uia
 ```json
 {
   "inspect": {
-    "delay": 5,
     "timeout": 5,
     "backend": "both",
     "scope": "window",

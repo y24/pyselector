@@ -9,6 +9,7 @@ from pyselector import __version__
 from pyselector.config import AppConfig, load_config
 from pyselector.inspect_runner import run_inspect, run_tree
 from pyselector.utils.errors import EXIT_ARGUMENT_ERROR, EXIT_INTERRUPTED, EXIT_UNEXPECTED, PySelectorError
+from pyselector.utils.runtime_warnings import configure_runtime_warnings
 
 
 _LOGO_PATH = Path(__file__).resolve().parent.parent / "assets" / "logo.txt"
@@ -49,6 +50,7 @@ def build_parser(config: AppConfig | None = None) -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    configure_runtime_warnings()
     _print_startup_logo()
     args_list = list(sys.argv[1:] if argv is None else argv)
     if not args_list or (args_list[0].startswith("-") and args_list[0] not in ("-h", "--help")):
@@ -87,7 +89,7 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def _add_inspect_options(parser: argparse.ArgumentParser, config: AppConfig) -> None:
-    parser.add_argument("--delay", type=_non_negative_int, default=config.inspect.delay)
+    parser.add_argument("--delay", type=_non_negative_int, default=config.inspect.delay, help=argparse.SUPPRESS)
     parser.add_argument("--backend", choices=["win32", "uia", "both"], default=config.inspect.backend)
     parser.add_argument("--scope", choices=["window", "desktop"], default=config.inspect.scope)
     parser.add_argument("--detail", action="store_true")

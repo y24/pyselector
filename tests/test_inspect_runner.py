@@ -77,13 +77,29 @@ class TreeInspector:
         return [HierarchyNode(depth=0, window_text=root.window_text, class_name="Window")], False
 
 
+def test_inspect_cancel_returns_without_creating_inspector(monkeypatch, capsys):
+    created = []
+    monkeypatch.setattr(inspect_runner, "_create_inspector", lambda backend: created.append(backend))
+
+    result = inspect_runner.run_inspect(
+        Namespace(delay=0, timeout=12, backend="uia", detail=False, scope="window", only_visible=False, max_items=None),
+        point_selector=lambda: None,
+    )
+
+    lines = capsys.readouterr().out.splitlines()
+    assert result == 1
+    assert created == []
+    assert "[INFO] 選択をキャンセルしました。" in lines
+
+
 def test_inspect_does_not_log_timeout_before_countdown(monkeypatch, capsys):
     monkeypatch.setattr(inspect_runner, "wait_with_countdown", lambda delay, color=False: None)
     monkeypatch.setattr(inspect_runner, "get_cursor_position", lambda: CursorPosition(10, 20))
     monkeypatch.setattr(inspect_runner, "_create_inspector", lambda backend: FailingInspector())
 
     result = inspect_runner.run_inspect(
-        Namespace(delay=5, timeout=12, backend="uia", detail=False, scope="window", only_visible=False, max_items=None)
+        Namespace(delay=5, timeout=12, backend="uia", detail=False, scope="window", only_visible=False, max_items=None),
+        point_selector=lambda: (10, 20),
     )
 
     lines = capsys.readouterr().out.splitlines()
@@ -109,7 +125,8 @@ def test_inspect_logs_loaded_config_after_start(monkeypatch, capsys):
             only_visible=False,
             max_items=None,
             config_path=Path("pyselector_config.json"),
-        )
+        ),
+        point_selector=lambda: (10, 20),
     )
 
     lines = capsys.readouterr().out.splitlines()
@@ -128,7 +145,8 @@ def test_inspect_does_not_evaluate_control_type_only_candidate(monkeypatch, caps
     monkeypatch.setattr(inspect_runner, "_create_inspector", lambda backend: inspector)
 
     result = inspect_runner.run_inspect(
-        Namespace(delay=0, timeout=12, backend="uia", detail=False, scope="window", only_visible=False, max_items=None)
+        Namespace(delay=0, timeout=12, backend="uia", detail=False, scope="window", only_visible=False, max_items=None),
+        point_selector=lambda: (10, 20),
     )
 
     capsys.readouterr()
@@ -143,7 +161,8 @@ def test_inspect_does_not_evaluate_class_name_only_candidate(monkeypatch, capsys
     monkeypatch.setattr(inspect_runner, "_create_inspector", lambda backend: inspector)
 
     result = inspect_runner.run_inspect(
-        Namespace(delay=0, timeout=12, backend="win32", detail=False, scope="window", only_visible=False, max_items=None)
+        Namespace(delay=0, timeout=12, backend="win32", detail=False, scope="window", only_visible=False, max_items=None),
+        point_selector=lambda: (10, 20),
     )
 
     capsys.readouterr()
@@ -176,7 +195,8 @@ def test_inspect_logs_hit_candidate_count_after_evaluation(monkeypatch, capsys):
     monkeypatch.setattr(inspect_runner, "build_code_snippet", lambda backend, target_window, evaluations: "")
 
     result = inspect_runner.run_inspect(
-        Namespace(delay=0, timeout=12, backend="both", detail=False, scope="window", only_visible=False, max_items=None)
+        Namespace(delay=0, timeout=12, backend="both", detail=False, scope="window", only_visible=False, max_items=None),
+        point_selector=lambda: (10, 20),
     )
 
     lines = capsys.readouterr().out.splitlines()
@@ -225,7 +245,8 @@ def test_inspect_adds_parent_found_index_fallback_when_no_single_hit(monkeypatch
     monkeypatch.setattr(inspect_runner, "build_code_snippet", lambda backend, target_window, evaluations: "")
 
     result = inspect_runner.run_inspect(
-        Namespace(delay=0, timeout=12, backend="uia", detail=False, scope="window", only_visible=False, max_items=None)
+        Namespace(delay=0, timeout=12, backend="uia", detail=False, scope="window", only_visible=False, max_items=None),
+        point_selector=lambda: (10, 20),
     )
 
     capsys.readouterr()

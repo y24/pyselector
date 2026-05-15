@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import warnings
 from typing import Any, Callable
 
 from pyselector.model.element_info import ElementInfo
@@ -127,7 +128,14 @@ class PywinautoInspectorMixin:
 
     def _desktop(self) -> Any:
         try:
-            from pywinauto import Desktop
+            with warnings.catch_warnings():
+                warnings.filterwarnings(
+                    "ignore",
+                    message=r"Revert to STA COM threading mode",
+                    category=UserWarning,
+                    module=r"pywinauto",
+                )
+                from pywinauto import Desktop
         except Exception as exc:
             raise ElementNotFoundError("pywinauto をインポートできませんでした") from exc
         return Desktop(backend=self.backend_name)

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import sys
+import time
 from argparse import Namespace
 from typing import Any, Callable
 
@@ -9,28 +10,36 @@ from pyselector.backends.uia_inspector import UiaInspector
 from pyselector.backends.win32_inspector import Win32Inspector
 from pyselector.countdown import wait_with_countdown
 from pyselector.cursor import get_cursor_position
-from pyselector.model.inspection_result import BackendInspection, InspectionResult, TreeResult
+from pyselector.model.inspection_result import BackendInspection, CursorPosition, InspectionResult, TreeResult
+from pyselector.overlay.selector_overlay import select_point_with_overlay
 from pyselector.model.selector_candidate import SelectorEvaluation
 from pyselector.output.text_output import format_inspection_result, format_tree_result
 from pyselector.selector.evaluator import append_found_index_candidates, evaluate_candidates
 from pyselector.selector.generator import generate_candidates, sort_candidates, deduplicate_candidates
 from pyselector.selector.snippet import build_code_snippet
 from pyselector.selector.warning import attach_warnings
+from pyselector.utils.dpi import setup_dpi_awareness
 from pyselector.utils.logging import info_log
 
 
 DEFAULT_SELECTOR_EVALUATION_MAX_ITEMS = 10
+OVERLAY_CLOSE_WAIT_SECONDS = 0.05
 
 
-def run_inspect(args: Namespace) -> int:
+def run_inspect(args: Namespace, point_selector: Callable[[], tuple[int, int] | None] | None = None) -> int:
     color = _use_color()
     info_log("pyselector started", color)
     config_path = getattr(args, "config_path", None)
     if config_path is not None:
         info_log(f"{config_path.name} loaded", color)
-    wait_with_countdown(args.delay, color)
-    cursor = get_cursor_position()
-    info_log(f"座標を決定しました。 X={cursor.x}, Y={cursor.y}", color)
+    setup_dpi_awareness()
+    point_selector = point_selector or select_point_with_overlay
+    point = point_selector()
+    if point is None:
+        info_log("選択をキャンセルしました。", color)
+        return 1
+    time.sleep(OVERLAY_CLOSE_WAIT_SECONDS)
+    cursor = CursorPosition(x=point[0], y=point[1])
 
     inspections: list[BackendInspection] = []
     evaluation_max_items = args.max_items or getattr(args, "selector_evaluation_max_items", DEFAULT_SELECTOR_EVALUATION_MAX_ITEMS)
@@ -103,7 +112,7 @@ def run_inspect(args: Namespace) -> int:
         win32=_find_backend(inspections, "win32"),
         uia=_find_backend(inspections, "uia"),
     )
-    print(format_inspection_result(result, args.detail, color, include_cursor=False), end="")
+    print(format_inspection_result(result, args.detail, color, include_cursor=True), end="")
     return 0 if any(item.status == "success" for item in inspections) else 1
 
 
