@@ -2,6 +2,7 @@ from pathlib import Path
 
 from pyselector import cli
 from pyselector.config import load_config
+from pyselector.install import ROO_SKILL_CONTENT, ROO_SKILL_RELATIVE_PATH
 
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -127,6 +128,27 @@ def test_cli_json_suppresses_logo(monkeypatch, capsys):
     assert result == 0
     assert captured["args"].json is True
     assert capsys.readouterr().out == "{}\n"
+
+
+def test_cli_install_roo_writes_skill_to_current_directory(monkeypatch, tmp_path, capsys):
+    monkeypatch.delenv("PYSELECTOR_CONFIG", raising=False)
+    monkeypatch.chdir(tmp_path)
+
+    result = cli.main(["install", "--roo"])
+
+    target = tmp_path / ROO_SKILL_RELATIVE_PATH
+    assert result == 0
+    assert target.read_text(encoding="utf-8") == ROO_SKILL_CONTENT
+    assert "[INFO] Roo Code skill installed:" in capsys.readouterr().out
+
+
+def test_cli_install_requires_target(monkeypatch, capsys):
+    monkeypatch.setenv("PYSELECTOR_CONFIG", str(FIXTURES / "custom_config.json"))
+
+    result = cli.main(["install"])
+
+    assert result == 10
+    assert "install requires --roo" in capsys.readouterr().err
 
 
 def test_logo_gradient_uses_blue_ansi_colors():

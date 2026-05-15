@@ -25,7 +25,7 @@ def test_save_inspection_log_uses_requested_filename_parts(tmp_path, monkeypatch
 
     path = log_file.save_inspection_log(result, "RESULT", datetime(2026, 5, 15, 23, 1, 2))
 
-    assert path.parent.resolve() == tmp_path / "logs"
+    assert path.parent.resolve() == tmp_path / ".pyselector-log"
     assert path.name == "20260515_230102_電卓_Main_Button_1_2.txt"
     assert path.read_text(encoding="utf-8") == "RESULT"
 
@@ -85,9 +85,9 @@ def test_save_inspection_log_omits_missing_filename_parts(tmp_path, monkeypatch)
 
 def test_save_inspection_log_prunes_oldest_files(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    logs = tmp_path / "logs"
+    logs = tmp_path / ".pyselector-log"
     logs.mkdir()
-    for index in range(20):
+    for index in range(10):
         path = logs / f"old-{index:02}.txt"
         path.write_text(str(index), encoding="utf-8")
         timestamp = 1000 + index
@@ -97,7 +97,7 @@ def test_save_inspection_log_prunes_oldest_files(tmp_path, monkeypatch):
     log_file.save_inspection_log(result, "RESULT", datetime(2026, 5, 15, 23, 1, 2))
 
     names = sorted(path.name for path in logs.glob("*.txt"))
-    assert len(names) == 20
+    assert len(names) == 10
     assert "old-00.txt" not in names
     assert "20260515_230102.txt" in names
 

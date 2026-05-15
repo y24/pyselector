@@ -5,8 +5,8 @@ from pathlib import Path
 
 from pyselector.model.inspection_result import BackendInspection, InspectionResult
 
-MAX_LOG_FILES = 20
-LOG_DIR = Path("logs")
+MAX_LOG_FILES = 10
+LOG_DIR = Path(".pyselector-log")
 INVALID_FILENAME_CHARS = '<>:"/\\|?*'
 MAX_FILENAME_PART_LENGTH = 50
 

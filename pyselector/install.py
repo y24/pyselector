@@ -1,4 +1,11 @@
----
+from __future__ import annotations
+
+from pathlib import Path
+
+
+ROO_SKILL_RELATIVE_PATH = Path(".roo") / "skills" / "pyselector" / "SKILL.md"
+
+ROO_SKILL_CONTENT = """---
 name: pyselector
 description: Use the local pyselector CLI to inspect Windows UI elements and generate AI-readable pywinauto selector candidates in JSON.
 ---
@@ -107,5 +114,12 @@ For `tree`, read:
 1. Run an appropriate `pyselector ... --json` command.
 2. Parse the JSON output.
 3. Identify the best selector candidate and backend.
-4. Use or adapt the `code_snippet` in the automation code.
-5. If the result is ambiguous, run a narrower `tree --json` command or repeat `inspect --json` with a different backend or visibility option.
+4. If the result is ambiguous, run a narrower `tree --json` command or repeat `inspect --json` with a different backend or visibility option.
+"""
+
+
+def install_roo_skill(base_dir: Path | None = None) -> Path:
+    target = (base_dir or Path.cwd()) / ROO_SKILL_RELATIVE_PATH
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(ROO_SKILL_CONTENT, encoding="utf-8", newline="\n")
+    return target

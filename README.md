@@ -48,6 +48,16 @@ pyselector
 pyselector inspect
 ```
 
+## AIエージェント向け Roo Code Skill のインストール
+
+別のリポジトリで AI エージェントに `pyselector` の使い方を認識させたい場合は、そのリポジトリのルートで次を実行します。
+
+```bash
+pyselector install --roo
+```
+
+カレントディレクトリに `.roo/skills/pyselector/SKILL.md` を作成します。Roo Code がこの skill を読み込むと、`pyselector inspect` と `pyselector tree` を常に `--json` 付きで使う手順を参照できます。
+
 ## `inspect` モードのオプション
 
 `inspect` は起動直後にオーバーレイを表示します。左クリックで座標を確定し、Esc でキャンセルできます。

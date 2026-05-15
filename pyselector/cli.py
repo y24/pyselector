@@ -7,6 +7,7 @@ from pathlib import Path
 
 from pyselector import __version__
 from pyselector.config import AppConfig, load_config
+from pyselector.install import install_roo_skill
 from pyselector.inspect_runner import run_inspect, run_tree
 from pyselector.utils.errors import EXIT_ARGUMENT_ERROR, EXIT_INTERRUPTED, EXIT_UNEXPECTED, PySelectorError
 from pyselector.utils.runtime_warnings import configure_runtime_warnings
@@ -46,6 +47,9 @@ def build_parser(config: AppConfig | None = None) -> argparse.ArgumentParser:
     tree.add_argument("--delay", type=_non_negative_int, default=config.tree.delay)
     tree.add_argument("--json", action="store_true")
 
+    install = subparsers.add_parser("install", help="Install helper files for AI agents")
+    install.add_argument("--roo", action="store_true", help="Install the Roo Code skill into the current directory")
+
     subparsers.add_parser("version", help="Show version")
     return parser
 
@@ -63,6 +67,12 @@ def main(argv: list[str] | None = None) -> int:
         args = parser.parse_args(args_list)
         if args.command == "version":
             print(f"pyselector {__version__}")
+            return 0
+        if args.command == "install":
+            if not args.roo:
+                parser.error("install requires --roo")
+            path = install_roo_skill()
+            print(f"[INFO] Roo Code skill installed: {path}")
             return 0
         if args.command == "tree":
             _validate_visible_options(args, parser)
