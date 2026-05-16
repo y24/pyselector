@@ -3,14 +3,14 @@ from __future__ import annotations
 from pathlib import Path
 
 
-ROO_SKILL_RELATIVE_PATH = Path(".roo") / "skills" / "pyselector" / "SKILL.md"
+ROO_SKILL_RELATIVE_PATH = Path(".roo") / "skills" / "pyselector-cli" / "SKILL.md"
 
 ROO_SKILL_CONTENT = """---
-name: pyselector
+name: pyselector-cli
 description: Use the local pyselector CLI to inspect Windows UI elements and generate AI-readable pywinauto selector candidates in JSON.
 ---
 
-# pyselector Skill
+# pyselector-cli Skill
 
 Use this skill when a task needs Windows UI inspection, pywinauto selector discovery, UI tree exploration, or automation code that targets desktop application controls.
 

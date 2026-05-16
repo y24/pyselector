@@ -138,7 +138,9 @@ def test_cli_install_roo_writes_skill_to_current_directory(monkeypatch, tmp_path
 
     target = tmp_path / ROO_SKILL_RELATIVE_PATH
     assert result == 0
+    assert target == tmp_path / ".roo" / "skills" / "pyselector-cli" / "SKILL.md"
     assert target.read_text(encoding="utf-8") == ROO_SKILL_CONTENT
+    assert "name: pyselector-cli" in ROO_SKILL_CONTENT
     assert "[INFO] Roo Code skill installed:" in capsys.readouterr().out
 
 

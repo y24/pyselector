@@ -56,7 +56,7 @@ pyselector inspect
 pyselector install --roo
 ```
 
-カレントディレクトリに `.roo/skills/pyselector/SKILL.md` を作成します。Roo Code がこの skill を読み込むと、`pyselector inspect` と `pyselector tree` を常に `--json` 付きで使う手順を参照できます。
+カレントディレクトリに `.roo/skills/pyselector-cli/SKILL.md` を作成します。Roo Code がこの skill を読み込むと、`pyselector inspect` と `pyselector tree` を常に `--json` 付きで使う手順を参照できます。
 
 ## `inspect` モードのオプション
 
