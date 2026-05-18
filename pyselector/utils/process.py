@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import os
 import subprocess
+from functools import lru_cache
 
 
+@lru_cache(maxsize=256)
 def get_process_name(process_id: int | None) -> str | None:
     if process_id is None:
         return None

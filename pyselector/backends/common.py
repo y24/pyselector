@@ -55,6 +55,7 @@ def element_from_wrapper(
     backend: str,
     depth: int | None = None,
     include_children_count: bool = True,
+    include_process_name: bool = True,
 ) -> ElementInfo:
     element_info = getattr(wrapper, "element_info", None)
     process_id = wrapper_process_id(wrapper)
@@ -81,7 +82,7 @@ def element_from_wrapper(
         is_enabled=safe_call(wrapper, "is_enabled"),
         handle=wrapper_handle(wrapper),
         process_id=process_id,
-        process_name=get_process_name(process_id),
+        process_name=get_process_name(process_id) if include_process_name else None,
     )
 
 
@@ -105,7 +106,13 @@ def element_info_matches(element_info: Any, condition: dict[str, Any]) -> bool:
 
 
 def hierarchy_node_from_wrapper(wrapper: Any, backend: str, depth: int) -> HierarchyNode:
-    info = element_from_wrapper(wrapper, backend, depth, include_children_count=False)
+    info = element_from_wrapper(
+        wrapper,
+        backend,
+        depth,
+        include_children_count=False,
+        include_process_name=False,
+    )
     return HierarchyNode(
         depth=depth,
         window_text=info.window_text,

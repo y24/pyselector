@@ -1,3 +1,4 @@
+from pyselector.backends import common
 from pyselector.backends.common import PywinautoInspectorMixin
 from pyselector.model.element_info import ElementInfo
 
@@ -101,3 +102,29 @@ def test_walk_tree_reports_progress():
     assert reached_limit is False
     assert len(nodes) == 3
     assert progress == [(1, 10), (2, 10), (3, 10)]
+
+
+def test_walk_tree_does_not_resolve_process_name_per_node(monkeypatch):
+    root = FakeWrapper(
+        text="root",
+        children=[
+            FakeWrapper(text="child1"),
+            FakeWrapper(text="child2"),
+        ],
+    )
+    inspector = FakeInspector(root)
+    inspector._last_wrapper = root
+    calls = []
+
+    monkeypatch.setattr(common, "get_process_name", lambda process_id: calls.append(process_id) or "app.exe")
+
+    nodes, reached_limit = inspector.walk_tree(
+        ElementInfo(backend="uia"),
+        depth=1,
+        max_items=10,
+        only_visible=False,
+    )
+
+    assert reached_limit is False
+    assert len(nodes) == 3
+    assert calls == []
