@@ -15,18 +15,51 @@ def select_point_with_overlay() -> tuple[int, int] | None:
     """
     _configure_qt_logging()
     try:
-        from PySide6.QtCore import QEventLoop, QRect, Qt, QTimer
+        from PySide6.QtCore import QEventLoop, Qt, QTimer
         from PySide6.QtGui import QColor, QCursor, QKeyEvent, QMouseEvent, QPainter, QPen
         from PySide6.QtWidgets import QApplication, QWidget
     except ImportError as exc:
         raise RuntimeError("PySide6 is required for overlay inspect. Install dependencies with `pip install .`.") from exc
 
-    class SelectorOverlay(QWidget):
-        def __init__(self, geometry: QRect) -> None:
-            super().__init__()
+    class OverlayController:
+        def __init__(self, loop: QEventLoop) -> None:
             self.selected_point: tuple[int, int] | None = None
+            self._loop = loop
+            self._overlays: list[SelectorOverlay] = []
+            self._finished = False
+
+        def add_overlay(self, overlay: "SelectorOverlay") -> None:
+            self._overlays.append(overlay)
+
+        def select(self, point: tuple[int, int]) -> None:
+            self.selected_point = point
+            self.close_all()
+
+        def cancel(self) -> None:
+            self.close_all()
+
+        def close_all(self) -> None:
+            if self._finished:
+                return
+            self._finished = True
+            for overlay in list(self._overlays):
+                overlay.close()
+            QTimer.singleShot(0, self._loop.quit)
+
+        def overlay_closed(self, overlay: "SelectorOverlay") -> None:
+            if overlay in self._overlays:
+                self._overlays.remove(overlay)
+            if self._finished:
+                return
+            self.close_all()
+
+    class SelectorOverlay(QWidget):
+        def __init__(self, screen, controller: OverlayController) -> None:
+            super().__init__()
+            self._controller = controller
             self._cursor_pos = QCursor.pos()
-            self.setGeometry(geometry)
+            self.setScreen(screen)
+            self.setGeometry(screen.geometry())
             self.setMouseTracking(True)
             self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
             self.setCursor(Qt.CursorShape.CrossCursor)
@@ -52,6 +85,8 @@ def select_point_with_overlay() -> tuple[int, int] | None:
             painter = QPainter(self)
             painter.fillRect(self.rect(), QColor(0, 0, 0, 92))
             local = self.mapFromGlobal(self._cursor_pos)
+            if not self.rect().contains(local):
+                return
             painter.setPen(QPen(QColor(255, 255, 255, 220), 1))
             painter.drawLine(local.x(), 0, local.x(), self.height())
             painter.drawLine(0, local.y(), self.width(), local.y())
@@ -65,30 +100,39 @@ def select_point_with_overlay() -> tuple[int, int] | None:
         def mousePressEvent(self, event: QMouseEvent) -> None:  # noqa: N802
             if event.button() != Qt.MouseButton.LeftButton:
                 return
-            self.selected_point = _get_physical_cursor_position()
-            self.close()
+            self._controller.select(_get_physical_cursor_position())
 
         def keyPressEvent(self, event: QKeyEvent) -> None:  # noqa: N802
             if event.key() == Qt.Key.Key_Escape:
-                self.close()
+                self._controller.cancel()
+
+        def closeEvent(self, event) -> None:  # noqa: N802
+            self._controller.overlay_closed(self)
+            super().closeEvent(event)
 
     app = QApplication.instance()
     owns_app = app is None
     if app is None:
         app = QApplication(_qt_application_args())
 
-    geometry = _virtual_desktop_geometry(app)
-    overlay = SelectorOverlay(geometry)
-    overlay.show()
-    overlay.raise_()
-    overlay.activateWindow()
-    overlay.setFocus()
-
     loop = QEventLoop()
-    overlay.destroyed.connect(loop.quit)
-    overlay.destroyed.connect(app.quit if owns_app else lambda: None)
+    controller = OverlayController(loop)
+    overlays = [SelectorOverlay(screen, controller) for screen in _screens(app)]
+    if not overlays:
+        if owns_app:
+            app.quit()
+        return None
+    for overlay in overlays:
+        controller.add_overlay(overlay)
+        overlay.show()
+        overlay.raise_()
+    if overlays:
+        overlays[0].activateWindow()
+        overlays[0].setFocus()
     loop.exec()
-    return overlay.selected_point
+    if owns_app:
+        app.quit()
+    return controller.selected_point
 
 
 def _event_global_pos(event) -> "QPoint":
@@ -97,14 +141,12 @@ def _event_global_pos(event) -> "QPoint":
     return event.globalPos()
 
 
-def _virtual_desktop_geometry(app) -> "QRect":
+def _screens(app):
     screens = app.screens()
     if not screens:
-        return app.primaryScreen().geometry()
-    geometry = screens[0].geometry()
-    for screen in screens[1:]:
-        geometry = geometry.united(screen.geometry())
-    return geometry
+        primary = app.primaryScreen()
+        return [primary] if primary is not None else []
+    return screens
 
 
 def _get_physical_cursor_position() -> tuple[int, int]:
@@ -119,7 +161,7 @@ def _get_physical_cursor_position() -> tuple[int, int]:
 
 def _qt_application_args() -> list[str]:
     executable = sys.argv[0] if sys.argv else "pyselector"
-    return [executable, "-platform", "windows:dpiawareness=0"]
+    return [executable]
 
 
 def _configure_qt_logging() -> None:
