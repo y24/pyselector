@@ -37,13 +37,11 @@ def run_inspect(args: Namespace, point_selector: Callable[[], tuple[int, int] | 
     if config_path is not None and not json_output:
         info_log(f"{config_path.name} loaded", color)
     setup_dpi_awareness()
-    point_selector = point_selector or select_point_with_overlay
-    point = point_selector()
+    point = _select_inspect_point(args, color, json_output, point_selector)
     if point is None:
         if not json_output:
             info_log("選択をキャンセルしました。", color)
         return 1
-    time.sleep(OVERLAY_CLOSE_WAIT_SECONDS)
     cursor = CursorPosition(x=point[0], y=point[1])
 
     inspections: list[BackendInspection] = []
@@ -51,6 +49,8 @@ def run_inspect(args: Namespace, point_selector: Callable[[], tuple[int, int] | 
     for backend in _resolve_backends(args.backend):
         inspector = _create_inspector(backend)
         try:
+            if not json_output:
+                info_log(f"{backend}: カーソル下の要素を取得中です...", color)
             element = inspector.element_from_point(cursor.x, cursor.y)
             if not json_output:
                 info_log(f"{backend}: 対象ウィンドウを特定中です...", color)
@@ -132,6 +132,33 @@ def run_inspect(args: Namespace, point_selector: Callable[[], tuple[int, int] | 
     log_output = format_inspection_result_json(result) if json_output else format_inspection_result(result, args.detail, False, include_cursor=False)
     save_inspection_log(result, log_output, suffix=".json" if json_output else ".txt")
     return 0 if any(item.status == "success" for item in inspections) else 1
+
+
+def _select_inspect_point(
+    args: Namespace,
+    color: bool,
+    json_output: bool,
+    point_selector: Callable[[], tuple[int, int] | None] | None,
+) -> tuple[int, int] | None:
+    if point_selector is not None:
+        point = point_selector()
+        if point is not None:
+            time.sleep(OVERLAY_CLOSE_WAIT_SECONDS)
+        return point
+
+    delay = getattr(args, "delay", None)
+    if delay is None:
+        point = select_point_with_overlay()
+        if point is not None:
+            time.sleep(OVERLAY_CLOSE_WAIT_SECONDS)
+        return point
+
+    if json_output:
+        time.sleep(delay)
+    else:
+        wait_with_countdown(delay, color)
+    cursor = get_cursor_position()
+    return (cursor.x, cursor.y)
 
 
 def run_tree(args: Namespace) -> int:

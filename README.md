@@ -62,6 +62,12 @@ pyselector install --roo
 
 `inspect` は起動直後にオーバーレイを表示します。左クリックで座標を確定し、Esc でキャンセルできます。
 
+カウントダウン後のマウス位置で調べる場合:
+
+```bash
+pyselector inspect --delay 5
+```
+
 win32/uia バックエンドいずれか片方だけで調べる場合:
 
 ```bash

@@ -67,7 +67,7 @@ def test_cli_uses_config_defaults_for_inspect(monkeypatch):
 
     args = captured["args"]
     assert result == 0
-    assert args.delay == 2
+    assert args.delay is None
     assert args.timeout == 9
     assert args.backend == "uia"
     assert args.scope == "desktop"
@@ -94,6 +94,24 @@ def test_cli_arguments_override_config(monkeypatch):
     assert args.delay == 0
     assert args.timeout == 3
     assert args.only_visible is False
+
+
+def test_cli_delay_without_value_uses_five_seconds(monkeypatch):
+    captured = {}
+    monkeypatch.setenv("PYSELECTOR_CONFIG", str(FIXTURES / "custom_config.json"))
+
+    def fake_run_inspect(args):
+        captured["args"] = args
+        return 0
+
+    monkeypatch.setattr(cli, "run_inspect", fake_run_inspect)
+
+    result = cli.main(["--delay"])
+
+    args = captured["args"]
+    assert result == 0
+    assert args.command == "inspect"
+    assert args.delay == 5
 
 
 def test_cli_prints_logo_before_running_command(monkeypatch, capsys):

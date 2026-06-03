@@ -100,6 +100,39 @@ def test_inspect_cancel_returns_without_creating_inspector(monkeypatch, capsys):
     assert "[INFO] 選択をキャンセルしました。" in lines
 
 
+def test_inspect_uses_overlay_when_delay_is_not_specified(monkeypatch, capsys):
+    calls = []
+    monkeypatch.setattr(inspect_runner, "select_point_with_overlay", lambda: calls.append("overlay") or (10, 20))
+    monkeypatch.setattr(inspect_runner, "wait_with_countdown", lambda delay, color=False: calls.append("countdown"))
+    monkeypatch.setattr(inspect_runner, "get_cursor_position", lambda: calls.append("cursor") or CursorPosition(30, 40))
+    monkeypatch.setattr(inspect_runner, "_create_inspector", lambda backend: FailingInspector())
+
+    result = inspect_runner.run_inspect(
+        Namespace(delay=None, timeout=12, backend="uia", detail=False, scope="window", only_visible=False, max_items=None)
+    )
+
+    capsys.readouterr()
+    assert result == 1
+    assert calls == ["overlay"]
+
+
+def test_inspect_uses_countdown_when_delay_is_specified(monkeypatch, capsys):
+    calls = []
+    monkeypatch.setattr(inspect_runner, "select_point_with_overlay", lambda: calls.append("overlay") or (10, 20))
+    monkeypatch.setattr(inspect_runner, "wait_with_countdown", lambda delay, color=False: calls.append(("countdown", delay)))
+    monkeypatch.setattr(inspect_runner, "get_cursor_position", lambda: calls.append("cursor") or CursorPosition(30, 40))
+    monkeypatch.setattr(inspect_runner, "_create_inspector", lambda backend: FailingInspector())
+
+    result = inspect_runner.run_inspect(
+        Namespace(delay=5, timeout=12, backend="uia", detail=False, scope="window", only_visible=False, max_items=None)
+    )
+
+    output = capsys.readouterr().out
+    assert result == 1
+    assert calls == [("countdown", 5), "cursor"]
+    assert "[INFO] 座標を決定しました。 X=30, Y=40" in output
+
+
 def test_inspect_does_not_log_timeout_before_countdown(monkeypatch, capsys):
     monkeypatch.setattr(inspect_runner, "wait_with_countdown", lambda delay, color=False: None)
     monkeypatch.setattr(inspect_runner, "get_cursor_position", lambda: CursorPosition(10, 20))
@@ -115,7 +148,7 @@ def test_inspect_does_not_log_timeout_before_countdown(monkeypatch, capsys):
     assert lines[:1] == ["[INFO] pyselector started"]
     assert "[INFO] selector validation total timeout: 12 sec" not in lines
     assert "[INFO] selector hit count limit: 10" not in lines
-    assert "[INFO] uia: カーソル下の要素を取得中です..." not in lines
+    assert "[INFO] uia: カーソル下の要素を取得中です..." in lines
 
 
 def test_inspect_logs_loaded_config_after_start(monkeypatch, capsys):

@@ -14,9 +14,9 @@ def format_info(message: str, color: bool = False) -> str:
 
 
 def info_log(message: str, color: bool = False) -> None:
-    print(format_info(message, color))
+    print(format_info(message, color), flush=True)
 
 
 def verbose_log(enabled: bool, message: str) -> None:
     if enabled:
-        print(format_info(message), file=sys.stderr)
+        print(format_info(message), file=sys.stderr, flush=True)

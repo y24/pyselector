@@ -101,7 +101,14 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def _add_inspect_options(parser: argparse.ArgumentParser, config: AppConfig) -> None:
-    parser.add_argument("--delay", type=_non_negative_int, default=config.inspect.delay, help=argparse.SUPPRESS)
+    parser.add_argument(
+        "--delay",
+        nargs="?",
+        type=_non_negative_int,
+        const=5,
+        default=None,
+        help="Use countdown selection and inspect the cursor position after N seconds",
+    )
     parser.add_argument("--backend", choices=["win32", "uia", "both"], default=config.inspect.backend)
     parser.add_argument("--scope", choices=["window", "desktop"], default=config.inspect.scope)
     parser.add_argument("--detail", action="store_true")
