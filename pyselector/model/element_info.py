@@ -22,3 +22,4 @@ class ElementInfo:
     handle: int | None = None
     process_id: int | None = None
     process_name: str | None = None
+    ref: str | None = None

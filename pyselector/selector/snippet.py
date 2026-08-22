@@ -22,6 +22,17 @@ def build_code_snippet(
     )
 
 
+def build_window_snippet(backend: str, target_window: TargetWindowInfo | None) -> str | None:
+    """対象要素がトップレベルウィンドウ自身だったときの、ウィンドウだけのコード例。"""
+    if target_window is None:
+        return None
+    return (
+        f"from pywinauto import Desktop\n"
+        f"{_window_expression(backend, target_window)}\n"
+        'dlg.wait("visible", timeout=10)'
+    )
+
+
 def choose_snippet_candidate(evaluations: list[SelectorEvaluation]) -> SelectorEvaluation | None:
     if not evaluations:
         return None

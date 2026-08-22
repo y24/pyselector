@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 import warnings
+from dataclasses import replace
 from typing import Any, Callable
 
 from pyselector.model.element_info import ElementInfo
@@ -105,6 +106,15 @@ def element_info_matches(element_info: Any, condition: dict[str, Any]) -> bool:
     return True
 
 
+def _matched_titles_hint(matches: list[Any], max_titles: int = 5) -> str:
+    titles = [safe_call(window, "window_text") or "" for window in matches[:max_titles]]
+    if not titles:
+        return ""
+    listed = ", ".join(f'"{title}"' for title in titles)
+    suffix = ", ..." if len(matches) > max_titles else ""
+    return f"（{listed}{suffix}）"
+
+
 def hierarchy_node_from_wrapper(wrapper: Any, backend: str, depth: int) -> HierarchyNode:
     info = element_from_wrapper(
         wrapper,
@@ -132,6 +142,8 @@ class PywinautoInspectorMixin:
     def __init__(self) -> None:
         self._last_wrapper: Any = None
         self._wrapper_by_handle: dict[int, Any] = {}
+        self._wrapper_by_ref: dict[str, Any] = {}
+        self._ref_counter = 0
 
     def _desktop(self) -> Any:
         try:
@@ -149,12 +161,23 @@ class PywinautoInspectorMixin:
 
     def _remember(self, wrapper: Any) -> ElementInfo:
         self._last_wrapper = wrapper
-        handle = wrapper_handle(wrapper)
-        if handle is not None:
-            self._wrapper_by_handle[handle] = wrapper
-        return element_from_wrapper(wrapper, self.backend_name)
+        return self._track(wrapper, element_from_wrapper(wrapper, self.backend_name))
+
+    def _track(self, wrapper: Any, element: ElementInfo) -> ElementInfo:
+        """要素と pywinauto wrapper の対応を記録し、参照 ID を持つ要素を返す。
+
+        handle を持たない UIA 要素でも、後から同じ wrapper を解決できるようにする。
+        """
+        self._ref_counter += 1
+        ref = f"{self.backend_name}:{self._ref_counter}"
+        self._wrapper_by_ref[ref] = wrapper
+        if element.handle is not None:
+            self._wrapper_by_handle[element.handle] = wrapper
+        return replace(element, ref=ref)
 
     def _wrapper_for(self, element: ElementInfo) -> Any:
+        if element.ref is not None and element.ref in self._wrapper_by_ref:
+            return self._wrapper_by_ref[element.ref]
         if element.handle is not None and element.handle in self._wrapper_by_handle:
             return self._wrapper_by_handle[element.handle]
         if self._last_wrapper is not None:
@@ -339,8 +362,40 @@ class PywinautoInspectorMixin:
             if (use_regex and re.search(title, window_title)) or (not use_regex and title in window_title):
                 matches.append(window)
         if len(matches) != 1:
-            raise ElementNotFoundError(f"一致するウィンドウ数が {len(matches)} 件です")
+            raise ElementNotFoundError(f"一致するウィンドウ数が {len(matches)} 件です{_matched_titles_hint(matches)}")
         return self._remember(matches[0])
+
+    def find_window_by_handle(self, handle: int) -> ElementInfo:
+        return self.element_from_handle(handle)
+
+    def element_from_handle(self, handle: int) -> ElementInfo:
+        try:
+            window = self._desktop().window(handle=handle)
+            wrapper = window.wrapper_object() if hasattr(window, "wrapper_object") else window
+        except Exception as exc:
+            raise ElementNotFoundError(f"handle {handle:#x} の要素を取得できませんでした") from exc
+        if wrapper is None:
+            raise ElementNotFoundError(f"handle {handle:#x} の要素を取得できませんでした")
+        return self._remember(wrapper)
+
+    def list_windows(self, only_visible: bool = True) -> list[ElementInfo]:
+        try:
+            windows = self._desktop().windows(visible_only=only_visible)
+        except Exception as exc:
+            raise ElementNotFoundError("ウィンドウ一覧を取得できませんでした") from exc
+        return [
+            self._track(
+                wrapper,
+                element_from_wrapper(
+                    wrapper,
+                    self.backend_name,
+                    0,
+                    include_children_count=False,
+                    include_process_name=False,
+                ),
+            )
+            for wrapper in windows
+        ]
 
     def walk_tree(
         self,
@@ -350,8 +405,48 @@ class PywinautoInspectorMixin:
         only_visible: bool,
         progress_callback: Callable[[int, int], None] | None = None,
     ) -> tuple[list[HierarchyNode], bool]:
+        collected, reached_limit = self._walk_wrappers(root, depth, max_items, only_visible, progress_callback)
+        nodes = [hierarchy_node_from_wrapper(wrapper, self.backend_name, node_depth) for wrapper, node_depth in collected]
+        return nodes, reached_limit
+
+    def walk_elements(
+        self,
+        root: ElementInfo,
+        depth: int,
+        max_items: int,
+        only_visible: bool,
+        progress_callback: Callable[[int, int], None] | None = None,
+    ) -> tuple[list[ElementInfo], bool]:
+        """走査した要素を ElementInfo として返す。
+
+        各要素は参照 ID を持つため、後から get_hierarchy() などで再解決できる。
+        """
+        collected, reached_limit = self._walk_wrappers(root, depth, max_items, only_visible, progress_callback)
+        elements = [
+            self._track(
+                wrapper,
+                element_from_wrapper(
+                    wrapper,
+                    self.backend_name,
+                    node_depth,
+                    include_children_count=False,
+                    include_process_name=False,
+                ),
+            )
+            for wrapper, node_depth in collected
+        ]
+        return elements, reached_limit
+
+    def _walk_wrappers(
+        self,
+        root: ElementInfo,
+        depth: int,
+        max_items: int,
+        only_visible: bool,
+        progress_callback: Callable[[int, int], None] | None = None,
+    ) -> tuple[list[tuple[Any, int]], bool]:
         root_wrapper = self._wrapper_for(root)
-        nodes: list[HierarchyNode] = []
+        collected: list[tuple[Any, int]] = []
         reached_limit = False
 
         def walk(wrapper: Any, current_depth: int) -> None:
@@ -360,10 +455,10 @@ class PywinautoInspectorMixin:
                 return
             if only_visible and safe_call(wrapper, "is_visible") is False:
                 return
-            nodes.append(hierarchy_node_from_wrapper(wrapper, self.backend_name, current_depth))
+            collected.append((wrapper, current_depth))
             if progress_callback is not None:
-                progress_callback(len(nodes), max_items)
-            if len(nodes) >= max_items:
+                progress_callback(len(collected), max_items)
+            if len(collected) >= max_items:
                 reached_limit = True
                 return
             if current_depth >= depth:
@@ -372,4 +467,4 @@ class PywinautoInspectorMixin:
                 walk(child, current_depth + 1)
 
         walk(root_wrapper, 0)
-        return nodes, reached_limit
+        return collected, reached_limit

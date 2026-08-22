@@ -17,3 +17,7 @@ class RectangleInfo:
     @property
     def height(self) -> int:
         return self.bottom - self.top
+
+    @property
+    def center(self) -> tuple[int, int]:
+        return (self.left + self.right) // 2, (self.top + self.bottom) // 2

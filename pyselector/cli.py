@@ -7,9 +7,22 @@ from pathlib import Path
 
 from pyselector import __version__
 from pyselector.config import AppConfig, load_config
-from pyselector.install import install_roo_skill
-from pyselector.inspect_runner import run_inspect, run_tree
-from pyselector.utils.errors import EXIT_ARGUMENT_ERROR, EXIT_INTERRUPTED, EXIT_UNEXPECTED, PySelectorError
+from pyselector.install import SKILL_LABELS, install_skill
+from pyselector.inspect_runner import run_find, run_inspect, run_tree, run_windows
+from pyselector.output.json_output import format_error_json, format_version_json
+from pyselector.utils.errors import (
+    EXIT_ARGUMENT_ERROR,
+    EXIT_INTERRUPTED,
+    EXIT_UNEXPECTED,
+    ArgumentError,
+    BackendError,
+    CursorError,
+    ElementNotFoundError,
+    PySelectorError,
+    SelectorEvaluationError,
+    SelectorEvaluationTimeout,
+    TargetWindowNotFoundError,
+)
 from pyselector.utils.runtime_warnings import configure_runtime_warnings
 
 
@@ -19,11 +32,17 @@ _LOGO_GRADIENT_START = (36, 210, 255)
 _LOGO_GRADIENT_END = (106, 130, 255)
 
 
+class ArgumentParseExit(SystemExit):
+    def __init__(self, code: int, message: str) -> None:
+        super().__init__(code)
+        self.message = message
+
+
 class PySelectorArgumentParser(argparse.ArgumentParser):
     def error(self, message: str) -> None:
         self.print_usage(sys.stderr)
         print(f"[ERROR] invalid argument: {message}", file=sys.stderr)
-        raise SystemExit(EXIT_ARGUMENT_ERROR)
+        raise ArgumentParseExit(EXIT_ARGUMENT_ERROR, message)
 
 
 def build_parser(config: AppConfig | None = None) -> argparse.ArgumentParser:
@@ -37,6 +56,7 @@ def build_parser(config: AppConfig | None = None) -> argparse.ArgumentParser:
     tree = subparsers.add_parser("tree", help="Show UI element tree")
     tree.add_argument("--cursor", action="store_true")
     tree.add_argument("--window-title")
+    tree.add_argument("--window-handle", type=_handle, help="Target window handle (from the windows command)")
     tree.add_argument("--title-re", action="store_true")
     tree.add_argument("--backend", choices=["win32", "uia", "both"], default=config.tree.backend)
     tree.add_argument("--depth", type=_non_negative_int, default=config.tree.depth)
@@ -44,60 +64,121 @@ def build_parser(config: AppConfig | None = None) -> argparse.ArgumentParser:
     tree.add_argument("--only-visible", action="store_true", default=None)
     tree.add_argument("--include-hidden", action="store_true")
     tree.add_argument("--detail", action="store_true")
+    tree.add_argument("--summary", action="store_true", help="Show element counts instead of every node")
+    tree.add_argument("--compact", action="store_true", help="Reduce fields per node")
     tree.add_argument("--delay", type=_non_negative_int, default=config.tree.delay)
     tree.add_argument("--json", action="store_true")
 
-    install = subparsers.add_parser("install", help="Install helper files for AI agents")
-    install.add_argument("--roo", action="store_true", help="Install the Roo Code skill into the current directory")
+    windows = subparsers.add_parser("windows", help="List top-level windows")
+    _add_windows_options(windows, config)
 
-    subparsers.add_parser("version", help="Show version")
+    find = subparsers.add_parser("find", help="Search UI elements by condition")
+    _add_find_options(find, config)
+
+    install_skills = subparsers.add_parser("install-skills", help="Install AI agent skill files into the current directory")
+    install_skills.add_argument("--copilot", action="store_true", help="Install the GitHub Copilot skill")
+    install_skills.add_argument("--claude", action="store_true", help="Install the Claude Code skill")
+
+    version = subparsers.add_parser("version", help="Show version")
+    version.add_argument("--json", action="store_true")
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     configure_runtime_warnings()
     args_list = list(sys.argv[1:] if argv is None else argv)
-    if "--json" not in args_list:
+    json_output = "--json" in args_list
+    if not json_output:
         _print_startup_logo()
     if not args_list or (args_list[0].startswith("-") and args_list[0] not in ("-h", "--help")):
         args_list.insert(0, "inspect")
+    command = args_list[0] if not args_list[0].startswith("-") else None
     try:
         config = load_config()
         parser = build_parser(config)
         args = parser.parse_args(args_list)
+        command = args.command or command
         if args.command == "version":
-            print(f"pyselector {__version__}")
+            if args.json:
+                print(format_version_json(__version__), end="")
+            else:
+                print(f"pyselector {__version__}")
             return 0
-        if args.command == "install":
-            if not args.roo:
-                parser.error("install requires --roo")
-            path = install_roo_skill()
-            print(f"[INFO] Roo Code skill installed: {path}")
-            return 0
+        if args.command == "install-skills":
+            return _run_install_skills(args, parser)
         if args.command == "tree":
             _validate_visible_options(args, parser)
-            if args.cursor == bool(args.window_title):
-                parser.error("tree requires exactly one of --cursor or --window-title")
+            _validate_tree_target(args, parser)
             args.only_visible = _resolve_only_visible(args.only_visible, args.include_hidden, config.tree.only_visible)
             args.found_index_trial_count = config.selector.found_index_trial_count
             return run_tree(args)
+        if args.command == "windows":
+            _validate_visible_options(args, parser)
+            args.only_visible = _resolve_only_visible(args.only_visible, args.include_hidden, config.windows.only_visible)
+            return run_windows(args)
+        if args.command == "find":
+            _validate_visible_options(args, parser)
+            _validate_find_target(args, parser)
+            args.only_visible = _resolve_only_visible(args.only_visible, args.include_hidden, config.find.only_visible)
+            args.selector_evaluation_max_items = config.selector.evaluation_max_items
+            args.found_index_trial_count = config.selector.found_index_trial_count
+            return run_find(args)
         _validate_visible_options(args, parser)
+        _validate_inspect_target(args, parser)
         args.only_visible = _resolve_only_visible(args.only_visible, args.include_hidden, config.inspect.only_visible)
         args.selector_evaluation_max_items = config.selector.evaluation_max_items
         args.found_index_trial_count = config.selector.found_index_trial_count
         args.config_path = config.loaded_path
         return run_inspect(args)
     except KeyboardInterrupt:
+        _print_error_json(command, json_output, "interrupted", EXIT_INTERRUPTED, "処理を中断しました")
         return EXIT_INTERRUPTED
     except PySelectorError as exc:
         print(f"[ERROR] {exc}", file=sys.stderr)
+        _print_error_json(command, json_output, _error_code(exc), exc.exit_code, str(exc))
         return exc.exit_code
     except SystemExit as exc:
         code = exc.code if isinstance(exc.code, int) else EXIT_ARGUMENT_ERROR
+        if code != 0:
+            message = getattr(exc, "message", "invalid argument")
+            _print_error_json(command, json_output, "argument_error", code, message)
         return code
     except Exception as exc:
         print(f"[ERROR] unexpected error: {exc}", file=sys.stderr)
+        _print_error_json(command, json_output, "unexpected_error", EXIT_UNEXPECTED, str(exc))
         return EXIT_UNEXPECTED
+
+
+def _run_install_skills(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
+    kinds = [kind for kind in ("copilot", "claude") if getattr(args, kind)]
+    if not kinds:
+        parser.error("install-skills requires --copilot or --claude")
+    for kind in kinds:
+        print(f"[INFO] {SKILL_LABELS[kind]} skill installed: {install_skill(kind)}")
+    return 0
+
+
+_ERROR_CODES: list[tuple[type[PySelectorError], str]] = [
+    (ArgumentError, "argument_error"),
+    (SelectorEvaluationTimeout, "selector_evaluation_timeout"),
+    (SelectorEvaluationError, "selector_evaluation_failed"),
+    (TargetWindowNotFoundError, "target_window_not_found"),
+    (ElementNotFoundError, "element_not_found"),
+    (CursorError, "cursor_error"),
+    (BackendError, "backend_error"),
+]
+
+
+def _error_code(exc: PySelectorError) -> str:
+    for error_type, code in _ERROR_CODES:
+        if isinstance(exc, error_type):
+            return code
+    return "error"
+
+
+def _print_error_json(command: str | None, json_output: bool, code: str, exit_code: int, message: str) -> None:
+    if json_output:
+        print(format_error_json(command, code, exit_code, message), end="")
 
 
 def _add_inspect_options(parser: argparse.ArgumentParser, config: AppConfig) -> None:
@@ -108,6 +189,19 @@ def _add_inspect_options(parser: argparse.ArgumentParser, config: AppConfig) -> 
         const=5,
         default=None,
         help="Use countdown selection and inspect the cursor position after N seconds",
+    )
+    parser.add_argument(
+        "--at",
+        type=_point,
+        default=None,
+        metavar="X,Y",
+        help="Inspect the element at the given screen coordinate without any interaction",
+    )
+    parser.add_argument(
+        "--handle",
+        type=_handle,
+        default=None,
+        help="Inspect the element identified by a window handle",
     )
     parser.add_argument("--backend", choices=["win32", "uia", "both"], default=config.inspect.backend)
     parser.add_argument("--scope", choices=["window", "desktop"], default=config.inspect.scope)
@@ -120,9 +214,72 @@ def _add_inspect_options(parser: argparse.ArgumentParser, config: AppConfig) -> 
     parser.add_argument("--include-hidden", action="store_true")
 
 
+def _add_windows_options(parser: argparse.ArgumentParser, config: AppConfig) -> None:
+    parser.add_argument("--title", help="Filter by window title (case-insensitive substring)")
+    parser.add_argument("--title-re", action="store_true", help="Treat --title as a regular expression")
+    parser.add_argument("--process", help="Filter by process name (case-insensitive substring)")
+    parser.add_argument("--pid", type=_positive_int, help="Filter by process id")
+    parser.add_argument(
+        "--include-untitled",
+        action="store_true",
+        help="Include windows without a title (helper windows are hidden by default)",
+    )
+    parser.add_argument("--backend", choices=["win32", "uia", "both"], default=config.windows.backend)
+    parser.add_argument("--max-items", type=_positive_int, default=config.windows.max_items)
+    parser.add_argument("--only-visible", action="store_true", default=None)
+    parser.add_argument("--include-hidden", action="store_true")
+    parser.add_argument("--compact", action="store_true", help="Reduce fields per window")
+    parser.add_argument("--json", action="store_true")
+
+
+def _add_find_options(parser: argparse.ArgumentParser, config: AppConfig) -> None:
+    parser.add_argument("--window-title", help="Search inside the window matched by title")
+    parser.add_argument("--window-handle", type=_handle, help="Search inside the window with this handle")
+    parser.add_argument("--at", type=_point, default=None, metavar="X,Y", help="Search below the element at this coordinate")
+    parser.add_argument("--title-re", action="store_true", help="Treat --window-title as a regular expression")
+    parser.add_argument("--text", help="Match window_text (case-insensitive substring)")
+    parser.add_argument("--text-re", help="Match window_text by regular expression")
+    parser.add_argument("--auto-id", help="Match automation_id exactly")
+    parser.add_argument("--control-type", help="Match control_type (case-insensitive)")
+    parser.add_argument("--class-name", help="Match class_name exactly")
+    parser.add_argument("--enabled-only", action="store_true", help="Keep only enabled elements")
+    parser.add_argument("--backend", choices=["win32", "uia", "both"], default=config.find.backend)
+    parser.add_argument("--scope", choices=["window", "desktop"], default=config.find.scope)
+    parser.add_argument("--depth", type=_non_negative_int, default=config.find.depth)
+    parser.add_argument("--max-items", type=_positive_int, default=config.find.max_items)
+    parser.add_argument("--limit", type=_positive_int, default=config.find.limit)
+    parser.add_argument("--timeout", type=_positive_int, default=config.find.timeout)
+    parser.add_argument("--with-selectors", action="store_true", help="Generate selector candidates for the matches")
+    parser.add_argument("--selector-limit", type=_positive_int, default=config.find.selector_limit)
+    parser.add_argument("--only-visible", action="store_true", default=None)
+    parser.add_argument("--include-hidden", action="store_true")
+    parser.add_argument("--detail", action="store_true")
+    parser.add_argument("--compact", action="store_true", help="Reduce fields per element")
+    parser.add_argument("--json", action="store_true")
+
+
 def _validate_visible_options(args: argparse.Namespace, parser: argparse.ArgumentParser) -> None:
     if args.only_visible and args.include_hidden:
         parser.error("--only-visible and --include-hidden cannot be used together")
+
+
+def _validate_inspect_target(args: argparse.Namespace, parser: argparse.ArgumentParser) -> None:
+    if args.at is not None and args.handle is not None:
+        parser.error("--at and --handle cannot be used together")
+    if args.delay is not None and (args.at is not None or args.handle is not None):
+        parser.error("--delay cannot be used with --at or --handle")
+
+
+def _validate_tree_target(args: argparse.Namespace, parser: argparse.ArgumentParser) -> None:
+    targets = [args.cursor, args.window_title is not None, args.window_handle is not None]
+    if sum(1 for target in targets if target) != 1:
+        parser.error("tree requires exactly one of --cursor, --window-title or --window-handle")
+
+
+def _validate_find_target(args: argparse.Namespace, parser: argparse.ArgumentParser) -> None:
+    targets = [args.at is not None, args.window_title is not None, args.window_handle is not None]
+    if sum(1 for target in targets if target) != 1:
+        parser.error("find requires exactly one of --at, --window-title or --window-handle")
 
 
 def _resolve_only_visible(only_visible_arg: bool | None, include_hidden: bool, config_default: bool) -> bool:
@@ -134,6 +291,13 @@ def _resolve_only_visible(only_visible_arg: bool | None, include_hidden: bool, c
 
 
 def _print_startup_logo() -> None:
+    """対話的な端末で実行されたときだけロゴを表示する。
+
+    AI エージェントのようにパイプやリダイレクト経由で実行された場合は、
+    ロゴが解析対象の出力に混ざるノイズになるため表示しない。
+    """
+    if not _is_interactive_stdout():
+        return
     try:
         logo = _LOGO_PATH.read_text(encoding="utf-8").rstrip()
     except OSError:
@@ -144,8 +308,15 @@ def _print_startup_logo() -> None:
         print(logo)
 
 
+def _is_interactive_stdout() -> bool:
+    try:
+        return sys.stdout.isatty()
+    except Exception:
+        return False
+
+
 def _use_logo_color() -> bool:
-    return sys.stdout.isatty() and "NO_COLOR" not in os.environ
+    return _is_interactive_stdout() and "NO_COLOR" not in os.environ
 
 
 def _format_logo_gradient(logo: str) -> str:
@@ -185,6 +356,27 @@ def _non_negative_int(value: str) -> int:
 
 def _positive_int(value: str) -> int:
     parsed = int(value)
+    if parsed <= 0:
+        raise argparse.ArgumentTypeError("must be positive")
+    return parsed
+
+
+def _point(value: str) -> tuple[int, int]:
+    parts = value.split(",")
+    if len(parts) != 2:
+        raise argparse.ArgumentTypeError("must be in X,Y format")
+    try:
+        return (int(parts[0].strip()), int(parts[1].strip()))
+    except ValueError:
+        raise argparse.ArgumentTypeError("must be in X,Y format") from None
+
+
+def _handle(value: str) -> int:
+    text = value.strip()
+    try:
+        parsed = int(text, 16) if text.lower().startswith("0x") else int(text, 10)
+    except ValueError:
+        raise argparse.ArgumentTypeError("must be an integer or a 0x-prefixed hex value") from None
     if parsed <= 0:
         raise argparse.ArgumentTypeError("must be positive")
     return parsed

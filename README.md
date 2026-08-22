@@ -48,15 +48,103 @@ pyselector
 pyselector inspect
 ```
 
-## AIエージェント向け Roo Code Skill のインストール
+## AI エージェント向けの使い方
+
+`inspect` はオーバーレイのクリック、`tree --cursor` はマウス位置を前提としているため、AI エージェントはそのままでは使えません。エージェント向けには、人の操作を一切必要としない次のコマンドを用意しています。
+
+| コマンド | 用途 |
+| --- | --- |
+| `pyselector windows` | 開いているウィンドウと handle の一覧 |
+| `pyselector find` | ウィンドウ内の要素を条件で絞り込み検索 |
+| `pyselector inspect --at X,Y` | 座標を指定して要素を調査（クリック不要） |
+| `pyselector inspect --handle 0x...` | ウィンドウ自身を調査 |
+| `pyselector tree --window-handle 0x...` | タイトルに依存せずツリーを取得 |
+
+外側から内側へ絞り込むのが基本の流れです。
+
+```bash
+# 1. 対象ウィンドウと handle を見つける
+pyselector windows --json
+
+# 2. そのウィンドウの規模を掴む（全ノードではなく件数の集計）
+pyselector tree --json --window-handle 0x2E20F46 --summary
+
+# 3. 要素を絞り込む
+pyselector find --json --window-handle 0x2E20F46 --control-type Button
+
+# 4. セレクター候補まで確定させる
+pyselector find --json --window-handle 0x2E20F46 --text "保存" --with-selectors
+
+# 5. 単一要素を完全に評価したいときだけ
+pyselector inspect --json --at 636,2240
+```
+
+`find` の各一致要素には要素矩形の中心座標 `point` が含まれます。これはそのまま `inspect --at X,Y` に渡せます。
+
+### `windows`
+
+```bash
+pyselector windows --json
+pyselector windows --json --title "電卓"
+pyselector windows --json --process notepad.exe
+pyselector windows --json --pid 12345
+```
+
+既定ではタイトルを持つウィンドウだけを表示します。ヘルパーウィンドウも含めたい場合は `--include-untitled` を付けます。
+
+### `find`
+
+`--window-handle` / `--window-title` / `--at` のいずれか 1 つで探索の起点を指定します。
+
+```bash
+pyselector find --json --window-handle 0x2E20F46 --control-type Button
+pyselector find --json --window-handle 0x2E20F46 --auto-id num1Button --with-selectors
+pyselector find --json --window-title "メモ帳" --class-name Edit --backend win32
+pyselector find --json --at 636,2240 --depth 2
+```
+
+絞り込み条件は AND で結合されます。
+
+| オプション | 一致条件 |
+| --- | --- |
+| `--text` | `window_text` の部分一致（大文字小文字を区別しない） |
+| `--text-re` | `window_text` の正規表現一致 |
+| `--auto-id` | `automation_id` の完全一致 |
+| `--control-type` | `control_type` の一致（大文字小文字を区別しない） |
+| `--class-name` | `class_name` の完全一致 |
+| `--enabled-only` | 有効な要素のみ |
+
+`--with-selectors` を付けると、先頭 `--selector-limit` 件（既定 3 件）についてセレクター候補の生成と評価まで行います。評価は重い処理のため、上限を上げるより条件を絞ることを推奨します。
+
+出力量の制御には `--limit`（出力件数）、`--max-items`（走査上限）、`--depth`、`--compact` を使います。`reached_limit` は走査が `--max-items` で打ち切られたこと、`truncated` は一致要素が `--limit` で切られたことを表します。
+
+### JSON の共通仕様
+
+`--json` の出力には必ず `schema_version` / `command` / `status` が含まれます。
+
+`status` は、いずれかのバックエンドが完走すれば `success` です。**該当なしと失敗は別物**として扱えます。
+
+```text
+status=success, matches=[] … 探索は成功したが該当なし（終了コード 1）
+status=error                … 探索そのものが失敗
+```
+
+失敗時は `error` オブジェクト（`code` / `exit_code` / `message`）が返ります。引数エラーも含め、`--json` 指定時のエラーは標準出力から JSON として読めます。
+
+### エージェント向け Skill のインストール
 
 別のリポジトリで AI エージェントに `pyselector` の使い方を認識させたい場合は、そのリポジトリのルートで次を実行します。
 
 ```bash
-pyselector install --roo
+pyselector install-skills --copilot
+pyselector install-skills --claude
 ```
 
-カレントディレクトリに `.roo/skills/pyselector-cli/SKILL.md` を作成します。Roo Code がこの skill を読み込むと、`pyselector inspect` と `pyselector tree` を常に `--json` 付きで使う手順を参照できます。
+それぞれ `.github/skills/pyselector-cli/SKILL.md`、`.claude/skills/pyselector-cli/SKILL.md` を作成します。両方を同時に指定することもできます。エージェントがこの skill を読み込むと、上記の探索手順を常に `--json` 付きで使う方法を参照できます。
+
+### 制限
+
+`pyselector` は UI を読み取るだけで、クリックや入力は行いません。メニューを開く、タブを切り替えるといった操作が必要な画面は、あらかじめ人が表示させておく必要があります。
 
 ## `inspect` モードのオプション
 
@@ -67,6 +155,15 @@ pyselector install --roo
 ```bash
 pyselector inspect --delay 5
 ```
+
+クリックもカウントダウンもせず、座標やハンドルを直接指定する場合:
+
+```bash
+pyselector inspect --at 636,2240
+pyselector inspect --handle 0x2E20F46
+```
+
+`--at` は物理ピクセルの画面座標です。`find` が返す `point` や `rectangle` と同じ座標系です。`--handle` はウィンドウ自身を対象にします（中心座標を調べると子要素が取れてしまうため）。
 
 win32/uia バックエンドいずれか片方だけで調べる場合:
 
@@ -222,6 +319,18 @@ pyselector tree --window-title "電卓"
 pyselector tree --cursor
 ```
 
+同じタイトルのウィンドウが複数ある場合は、`windows` で得た handle で指定できます:
+
+```bash
+pyselector tree --window-handle 0x2E20F46
+```
+
+全体像だけを掴む（ノードを列挙せず `control_type` / `class_name` ごとの件数を出す）:
+
+```bash
+pyselector tree --window-handle 0x2E20F46 --summary
+```
+
 ツリーの深さを調整する:
 
 ```bash
@@ -283,6 +392,21 @@ pyselector tree --window-title "電.*" --title-re --backend uia
     "backend": "both",
     "depth": 3,
     "max_items": 50,
+    "only_visible": true
+  },
+  "windows": {
+    "backend": "win32",
+    "max_items": 50,
+    "only_visible": true
+  },
+  "find": {
+    "backend": "uia",
+    "scope": "window",
+    "timeout": 5,
+    "depth": 8,
+    "max_items": 200,
+    "limit": 20,
+    "selector_limit": 3,
     "only_visible": true
   },
   "selector": {

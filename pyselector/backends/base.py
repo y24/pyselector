@@ -16,6 +16,10 @@ class BackendInspector(ABC):
         raise NotImplementedError
 
     @abstractmethod
+    def element_from_handle(self, handle: int) -> ElementInfo:
+        raise NotImplementedError
+
+    @abstractmethod
     def get_target_window(self, element: ElementInfo) -> TargetWindowInfo:
         raise NotImplementedError
 
@@ -32,6 +36,14 @@ class BackendInspector(ABC):
         raise NotImplementedError
 
     @abstractmethod
+    def find_window_by_handle(self, handle: int) -> ElementInfo:
+        raise NotImplementedError
+
+    @abstractmethod
+    def list_windows(self, only_visible: bool = True) -> list[ElementInfo]:
+        raise NotImplementedError
+
+    @abstractmethod
     def walk_tree(
         self,
         root: ElementInfo,
@@ -40,4 +52,15 @@ class BackendInspector(ABC):
         only_visible: bool,
         progress_callback: Callable[[int, int], None] | None = None,
     ) -> tuple[list[HierarchyNode], bool]:
+        raise NotImplementedError
+
+    @abstractmethod
+    def walk_elements(
+        self,
+        root: ElementInfo,
+        depth: int,
+        max_items: int,
+        only_visible: bool,
+        progress_callback: Callable[[int, int], None] | None = None,
+    ) -> tuple[list[ElementInfo], bool]:
         raise NotImplementedError

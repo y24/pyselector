@@ -459,6 +459,147 @@ def test_tree_json_outputs_structured_data_without_info(monkeypatch, capsys):
     assert payload["results"][0]["nodes"][0]["window_text"] == "電卓"
 
 
+class HandleInspector:
+    def __init__(self, backend):
+        self.backend = backend
+        self.handles = []
+        self.points = []
+
+    def element_from_point(self, x, y):
+        self.points.append((x, y))
+        return ElementInfo(backend=self.backend, window_text="from point", handle=1)
+
+    def element_from_handle(self, handle):
+        self.handles.append(handle)
+        return ElementInfo(backend=self.backend, window_text="電卓", handle=handle)
+
+    def get_target_window(self, element):
+        # 座標から取得した要素はウィンドウの子要素、handle から取得した要素はウィンドウ自身とする。
+        handle = element.handle if element.window_text == "電卓" else 999
+        return TargetWindowInfo(backend=self.backend, title="電卓", handle=handle)
+
+    def get_hierarchy(self, element):
+        return []
+
+    def find_elements(self, scope, condition):
+        return [], False
+
+
+def _inspect_args(**overrides):
+    base = dict(
+        delay=None,
+        timeout=12,
+        backend="win32",
+        detail=False,
+        scope="window",
+        only_visible=False,
+        max_items=None,
+        at=None,
+        handle=None,
+    )
+    base.update(overrides)
+    return Namespace(**base)
+
+
+def test_inspect_at_skips_overlay_and_countdown(monkeypatch, capsys):
+    calls = []
+    inspector = HandleInspector("win32")
+    monkeypatch.setattr(inspect_runner, "select_point_with_overlay", lambda: calls.append("overlay") or (0, 0))
+    monkeypatch.setattr(inspect_runner, "wait_with_countdown", lambda delay, color=False: calls.append("countdown"))
+    monkeypatch.setattr(inspect_runner, "get_cursor_position", lambda: calls.append("cursor"))
+    monkeypatch.setattr(inspect_runner, "_create_inspector", lambda backend: inspector)
+
+    result = inspect_runner.run_inspect(_inspect_args(at=(636, 2240)))
+
+    output = capsys.readouterr().out
+    assert result == 0
+    assert calls == []
+    assert inspector.points == [(636, 2240)]
+    assert "[INFO] 座標を決定しました。 X=636, Y=2240" in output
+
+
+def test_inspect_handle_resolves_the_element_by_handle(monkeypatch, capsys):
+    calls = []
+    inspector = HandleInspector("win32")
+    monkeypatch.setattr(inspect_runner, "select_point_with_overlay", lambda: calls.append("overlay") or (0, 0))
+    monkeypatch.setattr(inspect_runner, "wait_with_countdown", lambda delay, color=False: calls.append("countdown"))
+    monkeypatch.setattr(inspect_runner, "_window_center", lambda handle: (50, 60))
+    monkeypatch.setattr(inspect_runner, "_create_inspector", lambda backend: inspector)
+
+    result = inspect_runner.run_inspect(_inspect_args(handle=0x2E20F46, json=True))
+
+    payload = json.loads(capsys.readouterr().out)
+    assert result == 0
+    assert calls == []
+    assert inspector.handles == [0x2E20F46]
+    assert inspector.points == []
+    assert payload["cursor_position"] == {"x": 50, "y": 60}
+    assert payload["backends"][0]["element"]["window_text"] == "電卓"
+
+
+def test_inspect_handle_falls_back_to_a_window_only_snippet(monkeypatch, capsys):
+    inspector = HandleInspector("win32")
+    monkeypatch.setattr(inspect_runner, "_window_center", lambda handle: (50, 60))
+    monkeypatch.setattr(inspect_runner, "_create_inspector", lambda backend: inspector)
+
+    result = inspect_runner.run_inspect(_inspect_args(handle=100, json=True))
+
+    payload = json.loads(capsys.readouterr().out)
+    assert result == 0
+    assert payload["backends"][0]["selector_candidates"] == []
+    assert payload["backends"][0]["code_snippet"] == (
+        'from pywinauto import Desktop\n'
+        'dlg = Desktop(backend="win32").window(title="電卓")\n'
+        'dlg.wait("visible", timeout=10)'
+    )
+
+
+def test_inspect_child_element_without_candidates_keeps_a_null_snippet(monkeypatch, capsys):
+    inspector = HandleInspector("win32")
+    monkeypatch.setattr(inspect_runner, "_create_inspector", lambda backend: inspector)
+
+    result = inspect_runner.run_inspect(_inspect_args(at=(1, 2), json=True))
+
+    payload = json.loads(capsys.readouterr().out)
+    assert result == 0
+    assert payload["backends"][0]["code_snippet"] is None
+
+
+def test_tree_uses_the_window_handle_when_given(monkeypatch, capsys):
+    class HandleTreeInspector(TreeInspector):
+        def __init__(self, backend):
+            super().__init__(backend)
+            self.handles = []
+
+        def find_window_by_handle(self, handle):
+            self.handles.append(handle)
+            return ElementInfo(backend=self.backend, window_text="電卓", handle=handle)
+
+    inspector = HandleTreeInspector("uia")
+    monkeypatch.setattr(inspect_runner, "_create_inspector", lambda backend: inspector)
+
+    result = inspect_runner.run_tree(
+        Namespace(
+            backend="uia",
+            cursor=False,
+            window_title=None,
+            window_handle=0x2E20F46,
+            title_re=False,
+            depth=3,
+            max_items=50,
+            only_visible=True,
+            detail=False,
+            delay=0,
+            json=True,
+        )
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    assert result == 0
+    assert inspector.handles == [0x2E20F46]
+    assert payload["results"][0]["nodes"][0]["window_text"] == "電卓"
+
+
 def test_tree_progress_logger_reports_every_item(capsys):
     logger = inspect_runner._tree_progress_logger("uia", color=False)
 

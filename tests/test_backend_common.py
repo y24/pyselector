@@ -128,3 +128,62 @@ def test_walk_tree_does_not_resolve_process_name_per_node(monkeypatch):
     assert reached_limit is False
     assert len(nodes) == 3
     assert calls == []
+
+
+def test_walk_elements_returns_elements_with_depth_and_ref():
+    root = FakeWrapper(text="root", children=[FakeWrapper(text="child1"), FakeWrapper(text="child2")])
+    inspector = FakeInspector(root)
+    inspector._last_wrapper = root
+
+    elements, reached_limit = inspector.walk_elements(
+        ElementInfo(backend="uia"),
+        depth=1,
+        max_items=10,
+        only_visible=False,
+    )
+
+    assert reached_limit is False
+    assert [element.window_text for element in elements] == ["root", "child1", "child2"]
+    assert [element.depth for element in elements] == [0, 1, 1]
+    assert len({element.ref for element in elements}) == 3
+
+
+def test_walk_elements_stops_at_max_items():
+    root = FakeWrapper(text="root", children=[FakeWrapper(text="child1"), FakeWrapper(text="child2")])
+    inspector = FakeInspector(root)
+    inspector._last_wrapper = root
+
+    elements, reached_limit = inspector.walk_elements(
+        ElementInfo(backend="uia"),
+        depth=1,
+        max_items=2,
+        only_visible=False,
+    )
+
+    assert reached_limit is True
+    assert len(elements) == 2
+
+
+def test_wrapper_for_resolves_each_walked_element_without_handles():
+    """handle を持たない UIA 要素でも、要素ごとに正しい wrapper を解決できること。"""
+    children = [FakeWrapper(text="child1"), FakeWrapper(text="child2")]
+    root = FakeWrapper(text="root", children=children)
+    inspector = FakeInspector(root)
+    inspector._last_wrapper = root
+
+    elements, _ = inspector.walk_elements(
+        ElementInfo(backend="uia"),
+        depth=1,
+        max_items=10,
+        only_visible=False,
+    )
+
+    assert [inspector._wrapper_for(element) for element in elements] == [root, children[0], children[1]]
+
+
+def test_wrapper_for_falls_back_to_the_last_wrapper_without_a_ref():
+    root = FakeWrapper(text="root")
+    inspector = FakeInspector(root)
+    inspector._last_wrapper = root
+
+    assert inspector._wrapper_for(ElementInfo(backend="uia")) is root

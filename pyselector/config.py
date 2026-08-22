@@ -33,6 +33,25 @@ class TreeConfig:
 
 
 @dataclass(frozen=True)
+class WindowsConfig:
+    backend: str = "win32"
+    max_items: int = 50
+    only_visible: bool = True
+
+
+@dataclass(frozen=True)
+class FindConfig:
+    backend: str = "uia"
+    scope: str = "window"
+    timeout: int = 5
+    depth: int = 8
+    max_items: int = 200
+    limit: int = 20
+    selector_limit: int = 3
+    only_visible: bool = True
+
+
+@dataclass(frozen=True)
 class SelectorConfig:
     evaluation_max_items: int = 10
     found_index_trial_count: int = 3
@@ -42,6 +61,8 @@ class SelectorConfig:
 class AppConfig:
     inspect: InspectConfig = InspectConfig()
     tree: TreeConfig = TreeConfig()
+    windows: WindowsConfig = WindowsConfig()
+    find: FindConfig = FindConfig()
     selector: SelectorConfig = SelectorConfig()
     loaded_path: Path | None = None
 
@@ -71,10 +92,12 @@ def _resolve_config_path() -> Path | None:
 
 
 def _build_config(raw: dict[str, Any], path: Path) -> AppConfig:
-    allowed_sections = {"inspect", "tree", "selector"}
+    allowed_sections = {"inspect", "tree", "windows", "find", "selector"}
     _reject_unknown_keys(raw, allowed_sections, "config", path)
     inspect = _section(raw, "inspect", path)
     tree = _section(raw, "tree", path)
+    windows = _section(raw, "windows", path)
+    find = _section(raw, "find", path)
     selector = _section(raw, "selector", path)
     return AppConfig(
         inspect=InspectConfig(
@@ -92,6 +115,21 @@ def _build_config(raw: dict[str, Any], path: Path) -> AppConfig:
             max_items=_positive_int(tree, "max_items", 50, path),
             only_visible=_bool(tree, "only_visible", True, path),
         ),
+        windows=WindowsConfig(
+            backend=_choice(windows, "backend", "win32", {"win32", "uia", "both"}, path),
+            max_items=_positive_int(windows, "max_items", 50, path),
+            only_visible=_bool(windows, "only_visible", True, path),
+        ),
+        find=FindConfig(
+            backend=_choice(find, "backend", "uia", {"win32", "uia", "both"}, path),
+            scope=_choice(find, "scope", "window", {"window", "desktop"}, path),
+            timeout=_positive_int(find, "timeout", 5, path),
+            depth=_non_negative_int(find, "depth", 8, path),
+            max_items=_positive_int(find, "max_items", 200, path),
+            limit=_positive_int(find, "limit", 20, path),
+            selector_limit=_positive_int(find, "selector_limit", 3, path),
+            only_visible=_bool(find, "only_visible", True, path),
+        ),
         selector=SelectorConfig(
             evaluation_max_items=_positive_int(selector, "evaluation_max_items", 10, path),
             found_index_trial_count=_positive_int(selector, "found_index_trial_count", 3, path),
@@ -108,6 +146,10 @@ def _section(raw: dict[str, Any], key: str, path: Path) -> dict[str, Any]:
         allowed = {"delay", "timeout", "backend", "scope", "max_items", "only_visible"}
     elif key == "tree":
         allowed = {"delay", "backend", "depth", "max_items", "only_visible"}
+    elif key == "windows":
+        allowed = {"backend", "max_items", "only_visible"}
+    elif key == "find":
+        allowed = {"backend", "scope", "timeout", "depth", "max_items", "limit", "selector_limit", "only_visible"}
     else:
         allowed = {"evaluation_max_items", "found_index_trial_count"}
     _reject_unknown_keys(value, allowed, key, path)

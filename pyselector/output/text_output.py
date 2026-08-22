@@ -1,10 +1,13 @@
 from __future__ import annotations
 
-from pyselector.model.element_info import ElementInfo
+from collections import Counter
+
+from pyselector.model.find_result import FindMatch, FindResult
 from pyselector.model.hierarchy import HierarchyNode
 from pyselector.model.inspection_result import BackendInspection, InspectionResult, TreeResult
 from pyselector.model.selector_candidate import SelectorEvaluation
 from pyselector.model.target_window import TargetWindowInfo
+from pyselector.model.window_summary import WindowsResult
 from pyselector.output.formatters import format_handle, format_rectangle, format_value, quote_text
 from pyselector.utils.logging import format_info
 
@@ -130,11 +133,21 @@ def format_code_snippet(backend: str, snippet: str, color: bool = False) -> str:
     return f"{_heading(_backend_label(backend), color, level=2)}\n{snippet}"
 
 
-def format_tree_result(result: TreeResult, detail: bool = False, color: bool = False, include_heading: bool = True) -> str:
+def format_tree_result(
+    result: TreeResult,
+    detail: bool = False,
+    color: bool = False,
+    include_heading: bool = True,
+    summary: bool = False,
+) -> str:
     label = _backend_label(result.backend)
     if result.status != "success":
         lines = _tree_header_lines(label, color, include_heading)
         lines.extend(["    status: failed", f"    message: {format_value(result.message)}"])
+        return "\n".join(lines) + "\n"
+    if summary:
+        lines = _tree_header_lines(label, color, include_heading)
+        lines.extend(_tree_summary_lines(result))
         return "\n".join(lines) + "\n"
     lines = _tree_header_lines(label, color, include_heading)
     for node in result.nodes:
@@ -147,6 +160,118 @@ def format_tree_result(result: TreeResult, detail: bool = False, color: bool = F
     if result.reached_limit:
         lines.append("[WARN] max-items に達したため、以降の要素表示を省略しました。")
     return "\n".join(lines) + "\n"
+
+
+def _tree_summary_lines(result: TreeResult) -> list[str]:
+    control_types = Counter(node.control_type for node in result.nodes if node.control_type)
+    class_names = Counter(node.class_name for node in result.nodes if node.class_name)
+    lines = [
+        f"    total: {len(result.nodes)}",
+        f"    max_depth: {max((node.depth for node in result.nodes), default=0)}",
+        f"    reached_limit: {result.reached_limit}",
+    ]
+    lines.extend(_counter_lines("by_control_type", control_types))
+    lines.extend(_counter_lines("by_class_name", class_names))
+    return lines
+
+
+def _counter_lines(title: str, counter: Counter) -> list[str]:
+    if not counter:
+        return []
+    lines = [f"    {title}:"]
+    for name, count in sorted(counter.items(), key=lambda item: (-item[1], item[0])):
+        lines.append(f"      {name}: {count}")
+    return lines
+
+
+def format_windows_result(result: WindowsResult, color: bool = False, include_heading: bool = True) -> str:
+    lines: list[str] = []
+    if include_heading:
+        lines.append(_heading("Windows", color, level=1))
+    lines.append(_heading(_backend_label(result.backend), color, level=2))
+    if result.status != "success":
+        lines.extend(["    status: failed", f"    message: {format_value(result.message)}"])
+        return "\n".join(lines) + "\n"
+    if not result.windows:
+        lines.append("    status: no windows")
+        return "\n".join(lines) + "\n"
+    for window in result.windows:
+        attrs = [f'class_name="{window.class_name}"'] if window.class_name else []
+        if window.process_name:
+            attrs.append(f'process_name="{window.process_name}"')
+        if window.process_id is not None:
+            attrs.append(f"process_id={window.process_id}")
+        suffix = ("  " + ", ".join(attrs)) if attrs else ""
+        lines.append(f"    {format_handle(window.handle)} {quote_text(window.title)}{suffix}")
+    if result.reached_limit:
+        lines.append("[WARN] max-items に達したため、以降のウィンドウ表示を省略しました。")
+    return "\n".join(lines) + "\n"
+
+
+def format_find_result(
+    result: FindResult,
+    detail: bool = False,
+    color: bool = False,
+    include_heading: bool = True,
+) -> str:
+    lines: list[str] = []
+    if include_heading:
+        lines.append(_heading("Find", color, level=1))
+    lines.append(_heading(_backend_label(result.backend), color, level=2))
+    if result.status != "success":
+        lines.extend(["    status: failed", f"    message: {format_value(result.message)}"])
+        return "\n".join(lines) + "\n"
+    lines.append(f"    scanned: {result.scanned}, matched: {result.total_matched}")
+    if not result.matches:
+        lines.append("    status: no matches")
+        return "\n".join(lines) + "\n"
+    for match in result.matches:
+        lines.extend(_find_match_lines(result.backend, match, detail, color))
+    if result.truncated:
+        lines.append("[WARN] limit に達したため、以降の一致要素表示を省略しました。")
+    if result.reached_limit:
+        lines.append("[WARN] max-items に達したため、走査を打ち切りました。")
+    return "\n".join(lines) + "\n"
+
+
+def _find_match_lines(backend: str, match: FindMatch, detail: bool, color: bool) -> list[str]:
+    element = match.element
+    kind = element.control_type or element.class_name or "Element"
+    attrs = []
+    point = match.point
+    if point is not None:
+        attrs.append(f"point={point[0]},{point[1]}")
+    if backend == "uia" and element.control_type:
+        attrs.append(f'control_type="{element.control_type}"')
+    if element.automation_id:
+        attrs.append(f'auto_id="{element.automation_id}"')
+    if element.class_name:
+        attrs.append(f'class_name="{element.class_name}"')
+    if element.handle is not None:
+        attrs.append(f"handle={format_handle(element.handle)}")
+    if detail and element.rectangle is not None:
+        attrs.append(f"rectangle={format_rectangle(element.rectangle)}")
+    suffix = ("  " + ", ".join(attrs)) if attrs else ""
+    depth = element.depth if element.depth is not None else 0
+    lines = [f"    {depth} {kind:<7} {quote_text(element.window_text)}{suffix}"]
+    if match.inspection is not None:
+        lines.extend(_find_inspection_lines(match.inspection, color))
+    return lines
+
+
+def _find_inspection_lines(inspection: BackendInspection, color: bool) -> list[str]:
+    lines = [f"      {_heading('Selector Candidates', color, level=2).strip()}"]
+    evaluations = [evaluation for evaluation in inspection.evaluations if evaluation.hits != 0]
+    if not evaluations:
+        lines.append("        status: no candidates")
+    for evaluation in evaluations:
+        lines.append(f"        [{_format_hits(evaluation)}] {evaluation.candidate.selector_text}")
+        for warning in evaluation.warnings:
+            lines.append(f"            - warning: {warning}")
+    if inspection.code_snippet:
+        lines.append(f"      {_heading('Code Snippet', color, level=2).strip()}")
+        lines.extend(f"      {line}" for line in inspection.code_snippet.splitlines())
+    return lines
 
 
 def _tree_header_lines(label: str, color: bool, include_heading: bool) -> list[str]:

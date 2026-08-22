@@ -1,8 +1,11 @@
 from pathlib import Path
 
+import pytest
+
 from pyselector import cli
 from pyselector.config import load_config
-from pyselector.install import ROO_SKILL_CONTENT, ROO_SKILL_RELATIVE_PATH
+from pyselector.install import SKILL_CONTENT, SKILL_RELATIVE_PATHS
+from pyselector.utils.errors import ArgumentError
 
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -116,6 +119,8 @@ def test_cli_delay_without_value_uses_five_seconds(monkeypatch):
 
 def test_cli_prints_logo_before_running_command(monkeypatch, capsys):
     monkeypatch.setenv("PYSELECTOR_CONFIG", str(FIXTURES / "custom_config.json"))
+    monkeypatch.setattr(cli, "_is_interactive_stdout", lambda: True)
+    monkeypatch.setenv("NO_COLOR", "1")
 
     def fake_run_inspect(args):
         print("INSPECT START")
@@ -128,6 +133,17 @@ def test_cli_prints_logo_before_running_command(monkeypatch, capsys):
     assert result == 0
     logo_lines = cli._LOGO_PATH.read_text(encoding="utf-8").rstrip().splitlines()
     assert capsys.readouterr().out.splitlines()[: len(logo_lines) + 1] == logo_lines + ["INSPECT START"]
+
+
+def test_cli_suppresses_logo_when_stdout_is_not_a_terminal(monkeypatch, capsys):
+    monkeypatch.setenv("PYSELECTOR_CONFIG", str(FIXTURES / "custom_config.json"))
+    monkeypatch.setattr(cli, "_is_interactive_stdout", lambda: False)
+    monkeypatch.setattr(cli, "run_inspect", lambda args: print("INSPECT START") or 0)
+
+    result = cli.main(["inspect"])
+
+    assert result == 0
+    assert capsys.readouterr().out == "INSPECT START\n"
 
 
 def test_cli_json_suppresses_logo(monkeypatch, capsys):
@@ -148,27 +164,86 @@ def test_cli_json_suppresses_logo(monkeypatch, capsys):
     assert capsys.readouterr().out == "{}\n"
 
 
-def test_cli_install_roo_writes_skill_to_current_directory(monkeypatch, tmp_path, capsys):
+def test_cli_install_skills_copilot_writes_skill_to_current_directory(monkeypatch, tmp_path, capsys):
     monkeypatch.delenv("PYSELECTOR_CONFIG", raising=False)
     monkeypatch.chdir(tmp_path)
 
-    result = cli.main(["install", "--roo"])
+    result = cli.main(["install-skills", "--copilot"])
 
-    target = tmp_path / ROO_SKILL_RELATIVE_PATH
+    target = tmp_path / SKILL_RELATIVE_PATHS["copilot"]
     assert result == 0
-    assert target == tmp_path / ".roo" / "skills" / "pyselector-cli" / "SKILL.md"
-    assert target.read_text(encoding="utf-8") == ROO_SKILL_CONTENT
-    assert "name: pyselector-cli" in ROO_SKILL_CONTENT
-    assert "[INFO] Roo Code skill installed:" in capsys.readouterr().out
+    assert target == tmp_path / ".github" / "skills" / "pyselector-cli" / "SKILL.md"
+    assert target.read_text(encoding="utf-8") == SKILL_CONTENT
+    assert "name: pyselector-cli" in SKILL_CONTENT
+    assert "[INFO] GitHub Copilot skill installed:" in capsys.readouterr().out
 
 
-def test_cli_install_requires_target(monkeypatch, capsys):
+def test_cli_install_skills_requires_target(monkeypatch, capsys):
     monkeypatch.setenv("PYSELECTOR_CONFIG", str(FIXTURES / "custom_config.json"))
 
-    result = cli.main(["install"])
+    result = cli.main(["install-skills"])
 
     assert result == 10
-    assert "install requires --roo" in capsys.readouterr().err
+    assert "install-skills requires --copilot or --claude" in capsys.readouterr().err
+
+
+def test_default_windows_and_find_config(monkeypatch):
+    monkeypatch.delenv("PYSELECTOR_CONFIG", raising=False)
+    monkeypatch.chdir(FIXTURES)
+
+    config = load_config()
+
+    assert config.windows.backend == "win32"
+    assert config.windows.max_items == 50
+    assert config.windows.only_visible is True
+    assert config.find.backend == "uia"
+    assert config.find.scope == "window"
+    assert config.find.timeout == 5
+    assert config.find.depth == 8
+    assert config.find.max_items == 200
+    assert config.find.limit == 20
+    assert config.find.selector_limit == 3
+    assert config.find.only_visible is True
+
+
+def test_load_config_reads_windows_and_find_sections(monkeypatch, tmp_path):
+    config_path = tmp_path / "pyselector_config.json"
+    config_path.write_text(
+        '{"windows": {"backend": "uia", "max_items": 5}, "find": {"depth": 3, "limit": 2, "selector_limit": 1}}',
+        encoding="utf-8",
+    )
+    monkeypatch.delenv("PYSELECTOR_CONFIG", raising=False)
+    monkeypatch.chdir(tmp_path)
+
+    config = load_config()
+
+    assert config.windows.backend == "uia"
+    assert config.windows.max_items == 5
+    assert config.find.depth == 3
+    assert config.find.limit == 2
+    assert config.find.selector_limit == 1
+
+
+@pytest.mark.parametrize(
+    "raw,message",
+    [
+        ('{"windows": {"backend": "chrome"}}', "config value must be one of"),
+        ('{"windows": {"unknown": 1}}', "unknown config key in windows"),
+        ('{"find": {"limit": 0}}', "config value must be a positive integer"),
+        ('{"find": {"depth": -1}}', "config value must be a non-negative integer"),
+        ('{"find": {"only_visible": "yes"}}', "config value must be true or false"),
+    ],
+)
+def test_load_config_rejects_invalid_agent_sections(monkeypatch, tmp_path, raw, message):
+    config_path = tmp_path / "pyselector_config.json"
+    config_path.write_text(raw, encoding="utf-8")
+    monkeypatch.delenv("PYSELECTOR_CONFIG", raising=False)
+    monkeypatch.chdir(tmp_path)
+
+    with pytest.raises(ArgumentError) as error:
+        load_config()
+
+    assert message in str(error.value)
 
 
 def test_logo_gradient_uses_blue_ansi_colors():
