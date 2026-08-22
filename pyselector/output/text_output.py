@@ -2,6 +2,9 @@ from __future__ import annotations
 
 from collections import Counter
 
+from pyselector.model.act_result import ActResult
+from pyselector.model.diff_result import BackendDiff
+from pyselector.model.element_info import ElementInfo
 from pyselector.model.find_result import FindMatch, FindResult
 from pyselector.model.hierarchy import HierarchyNode
 from pyselector.model.inspection_result import BackendInspection, InspectionResult, TreeResult
@@ -272,6 +275,78 @@ def _find_inspection_lines(inspection: BackendInspection, color: bool) -> list[s
         lines.append(f"      {_heading('Code Snippet', color, level=2).strip()}")
         lines.extend(f"      {line}" for line in inspection.code_snippet.splitlines())
     return lines
+
+
+def format_act_result(result: ActResult, color: bool = False) -> str:
+    lines = [_heading("Act", color, level=1)]
+    lines.append(_heading(_backend_label(result.backend), color, level=2))
+    lines.append(f"    action: {result.action}" + (f" (value={result.value!r})" if result.value is not None else ""))
+    if result.dry_run:
+        lines.append("    performed: False (dry-run)")
+    else:
+        lines.append(f"    performed: {result.performed}")
+        lines.append(f"    method: {format_value(result.method)}")
+    point = result.point
+    lines.append(f"    point: {f'{point[0]},{point[1]}' if point is not None else '(None)'}")
+    if result.target_window is not None:
+        lines.append(f"    window: {quote_text(result.target_window.title)}")
+    if result.target is not None:
+        lines.append(f"    target: {quote_text(result.target.window_text)}  {_element_attrs(result.target)}")
+    if result.element_after is not None and result.target is not None:
+        after = result.element_after
+        if after.window_text != result.target.window_text:
+            lines.append(f"    after: {quote_text(after.window_text)}")
+    if result.diff is not None:
+        lines.append("")
+        lines.extend(format_diff_result(result.diff, color, include_heading=True).rstrip("\n").splitlines())
+    return "\n".join(lines) + "\n"
+
+
+def _element_attrs(element: ElementInfo) -> str:
+    attrs = []
+    if element.control_type:
+        attrs.append(f'control_type="{element.control_type}"')
+    if element.automation_id:
+        attrs.append(f'auto_id="{element.automation_id}"')
+    if element.class_name:
+        attrs.append(f'class_name="{element.class_name}"')
+    return ", ".join(attrs)
+
+
+def format_diff_result(diff: BackendDiff, color: bool = False, include_heading: bool = True) -> str:
+    lines: list[str] = []
+    if include_heading:
+        lines.append(_heading("Diff", color, level=1))
+    lines.append(_heading(_backend_label(diff.backend), color, level=2))
+    if diff.status != "success":
+        lines.extend(["    status: failed", f"    message: {format_value(diff.message)}"])
+        return "\n".join(lines) + "\n"
+    lines.append(
+        f"    added: {len(diff.added)}, removed: {len(diff.removed)}, "
+        f"changed: {len(diff.changed)}, unchanged: {diff.unchanged}"
+    )
+    if not diff.has_differences:
+        lines.append("    status: no differences")
+        return "\n".join(lines) + "\n"
+    for label, nodes in (("+", diff.added), ("-", diff.removed)):
+        for node in nodes:
+            lines.append(f"    {label} {_diff_node_line(node)}")
+    for change in diff.changed:
+        lines.append(f"    ~ {_diff_node_line(change.after)}")
+        for field, values in change.changes.items():
+            lines.append(f"        {field}: {values['before']!r} -> {values['after']!r}")
+    return "\n".join(lines) + "\n"
+
+
+def _diff_node_line(node: dict) -> str:
+    kind = node.get("control_type") or node.get("class_name") or "Element"
+    attrs = []
+    if node.get("automation_id"):
+        attrs.append(f'auto_id="{node["automation_id"]}"')
+    if node.get("class_name"):
+        attrs.append(f'class_name="{node["class_name"]}"')
+    suffix = ("  " + ", ".join(attrs)) if attrs else ""
+    return f'{node.get("depth")} {kind:<7} {quote_text(node.get("window_text"))}{suffix}'
 
 
 def _tree_header_lines(label: str, color: bool, include_heading: bool) -> list[str]:

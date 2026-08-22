@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 from collections import Counter
 
+from pyselector.model.act_result import ActResult
+from pyselector.model.diff_result import BackendDiff
 from pyselector.model.element_info import ElementInfo
 from pyselector.model.find_result import FindMatch, FindResult
 from pyselector.model.hierarchy import HierarchyNode
@@ -60,6 +62,65 @@ def format_find_results_json(results: list[FindResult], compact: bool = False) -
     )
 
 
+def format_act_result_json(result: ActResult) -> str:
+    point = result.point
+    payload: dict[str, object] = {
+        "action": result.action,
+        "value": result.value,
+        "performed": result.performed,
+        "dry_run": result.dry_run,
+        "method": result.method,
+        "backend": result.backend,
+        "target_window": _target_window_to_dict(result.target_window),
+        "point": {"x": point[0], "y": point[1]} if point is not None else None,
+        "target": _element_to_dict(result.target),
+        "element_after": _element_to_dict(result.element_after),
+    }
+    if result.diff is not None:
+        payload["diff"] = _backend_diff_to_dict(result.diff)
+    return _dump(_envelope("act", result.status, payload))
+
+
+def format_diff_results_json(diffs: list[BackendDiff], compact: bool = False) -> str:
+    return _dump(
+        _envelope(
+            "diff",
+            _overall_status(diffs),
+            {"results": [_backend_diff_to_dict(diff, compact) for diff in diffs]},
+        )
+    )
+
+
+def _backend_diff_to_dict(diff: BackendDiff, compact: bool = False) -> dict[str, object]:
+    return {
+        "backend": diff.backend,
+        "status": diff.status,
+        "message": diff.message,
+        "has_differences": diff.has_differences,
+        "summary": {
+            "added": len(diff.added),
+            "removed": len(diff.removed),
+            "changed": len(diff.changed),
+            "unchanged": diff.unchanged,
+        },
+        "added": [_diff_node_to_dict(node, compact) for node in diff.added],
+        "removed": [_diff_node_to_dict(node, compact) for node in diff.removed],
+        "changed": [
+            {
+                "node": _diff_node_to_dict(change.after, compact),
+                "changes": change.changes,
+            }
+            for change in diff.changed
+        ],
+    }
+
+
+def _diff_node_to_dict(node: dict[str, object], compact: bool = False) -> dict[str, object]:
+    if not compact:
+        return node
+    return {key: node.get(key) for key in ("depth", "window_text", "control_type", "automation_id", "class_name")}
+
+
 def format_version_json(version: str) -> str:
     return _dump(_envelope("version", "success", {"version": version}))
 
@@ -95,7 +156,7 @@ def _backend_inspection_to_dict(inspection: BackendInspection) -> dict[str, obje
         "message": inspection.message,
         "target_window": _target_window_to_dict(inspection.target_window),
         "element": _element_to_dict(inspection.element),
-        "hierarchy": [_hierarchy_node_to_dict(node) for node in inspection.hierarchy],
+        "hierarchy": [hierarchy_node_to_dict(node) for node in inspection.hierarchy],
         "selector_candidates": [_selector_evaluation_to_dict(evaluation) for evaluation in inspection.evaluations],
         "code_snippet": inspection.code_snippet,
     }
@@ -112,7 +173,7 @@ def _tree_result_to_dict(result: TreeResult, summary: bool = False, compact: boo
     if summary:
         payload["summary"] = _tree_summary(result.nodes)
     else:
-        payload["nodes"] = [_hierarchy_node_to_dict(node, compact) for node in result.nodes]
+        payload["nodes"] = [hierarchy_node_to_dict(node, compact) for node in result.nodes]
     return payload
 
 
@@ -227,7 +288,7 @@ def _element_to_dict(element: ElementInfo | None, compact: bool = False) -> dict
     }
 
 
-def _hierarchy_node_to_dict(node: HierarchyNode, compact: bool = False) -> dict[str, object]:
+def hierarchy_node_to_dict(node: HierarchyNode, compact: bool = False) -> dict[str, object]:
     if compact:
         return {
             "depth": node.depth,

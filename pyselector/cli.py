@@ -8,12 +8,15 @@ from pathlib import Path
 from pyselector import __version__
 from pyselector.config import AppConfig, load_config
 from pyselector.install import SKILL_LABELS, install_skill
-from pyselector.inspect_runner import run_find, run_inspect, run_tree, run_windows
+from pyselector.inspect_runner import run_act, run_diff, run_find, run_inspect, run_tree, run_windows
 from pyselector.output.json_output import format_error_json, format_version_json
 from pyselector.utils.errors import (
     EXIT_ARGUMENT_ERROR,
     EXIT_INTERRUPTED,
     EXIT_UNEXPECTED,
+    ActionFailedError,
+    ActionNotAllowedError,
+    AmbiguousTargetError,
     ArgumentError,
     BackendError,
     CursorError,
@@ -75,6 +78,15 @@ def build_parser(config: AppConfig | None = None) -> argparse.ArgumentParser:
     find = subparsers.add_parser("find", help="Search UI elements by condition")
     _add_find_options(find, config)
 
+    act = subparsers.add_parser("act", help="Perform a UI action on a single element (disabled by default)")
+    _add_act_options(act, config)
+
+    diff = subparsers.add_parser("diff", help="Compare two tree --json outputs")
+    diff.add_argument("before", type=Path, help="tree --json output taken before")
+    diff.add_argument("after", type=Path, help="tree --json output taken after")
+    diff.add_argument("--compact", action="store_true", help="Reduce fields per node")
+    diff.add_argument("--json", action="store_true")
+
     install_skills = subparsers.add_parser("install-skills", help="Install AI agent skill files into the current directory")
     install_skills.add_argument("--copilot", action="store_true", help="Install the GitHub Copilot skill")
     install_skills.add_argument("--claude", action="store_true", help="Install the Claude Code skill")
@@ -106,6 +118,15 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         if args.command == "install-skills":
             return _run_install_skills(args, parser)
+        if args.command == "diff":
+            return run_diff(args)
+        if args.command == "act":
+            _validate_visible_options(args, parser)
+            _validate_act_target(args, parser)
+            _resolve_act_action(args, parser)
+            args.only_visible = _resolve_only_visible(args.only_visible, args.include_hidden, config.act.only_visible)
+            args.config_allow_actions = config.act.allow_actions
+            return run_act(args)
         if args.command == "tree":
             _validate_visible_options(args, parser)
             _validate_tree_target(args, parser)
@@ -160,6 +181,9 @@ def _run_install_skills(args: argparse.Namespace, parser: argparse.ArgumentParse
 
 _ERROR_CODES: list[tuple[type[PySelectorError], str]] = [
     (ArgumentError, "argument_error"),
+    (ActionNotAllowedError, "action_not_allowed"),
+    (ActionFailedError, "action_failed"),
+    (AmbiguousTargetError, "ambiguous_target"),
     (SelectorEvaluationTimeout, "selector_evaluation_timeout"),
     (SelectorEvaluationError, "selector_evaluation_failed"),
     (TargetWindowNotFoundError, "target_window_not_found"),
@@ -256,6 +280,66 @@ def _add_find_options(parser: argparse.ArgumentParser, config: AppConfig) -> Non
     parser.add_argument("--detail", action="store_true")
     parser.add_argument("--compact", action="store_true", help="Reduce fields per element")
     parser.add_argument("--json", action="store_true")
+
+
+def _add_act_options(parser: argparse.ArgumentParser, config: AppConfig) -> None:
+    parser.add_argument("--window-title", help="Search inside the window matched by title")
+    parser.add_argument("--window-handle", type=_handle, help="Search inside the window with this handle")
+    parser.add_argument("--at", type=_point, default=None, metavar="X,Y", help="Act on the element at this coordinate")
+    parser.add_argument("--title-re", action="store_true", help="Treat --window-title as a regular expression")
+    parser.add_argument("--text", help="Match window_text (case-insensitive substring)")
+    parser.add_argument("--text-re", help="Match window_text by regular expression")
+    parser.add_argument("--auto-id", help="Match automation_id exactly")
+    parser.add_argument("--control-type", help="Match control_type (case-insensitive)")
+    parser.add_argument("--class-name", help="Match class_name exactly")
+    parser.add_argument("--enabled-only", action="store_true", help="Keep only enabled elements")
+    parser.add_argument("--index", type=_non_negative_int, help="Pick this match when several elements match")
+
+    actions = parser.add_argument_group("actions")
+    actions.add_argument("--click", dest="action", action="store_const", const="click")
+    actions.add_argument("--double-click", dest="action", action="store_const", const="double_click")
+    actions.add_argument("--right-click", dest="action", action="store_const", const="right_click")
+    actions.add_argument("--invoke", dest="action", action="store_const", const="invoke", help="Use the UIA invoke pattern instead of a physical click")
+    actions.add_argument("--focus", dest="action", action="store_const", const="focus")
+    actions.add_argument("--set-text", dest="set_text", metavar="TEXT", help="Replace the text of an edit control")
+    actions.add_argument("--send-keys", dest="send_keys", metavar="KEYS", help="Type keys into the element")
+
+    parser.add_argument("--allow-actions", action="store_true", help="Required to actually perform the action")
+    parser.add_argument("--dry-run", action="store_true", help="Resolve the target and report it without acting")
+    parser.add_argument("--diff", action="store_true", help="Report what changed in the window around the action")
+    parser.add_argument("--backend", choices=["win32", "uia"], default=config.act.backend)
+    parser.add_argument("--depth", type=_non_negative_int, default=config.act.depth)
+    parser.add_argument("--max-items", type=_positive_int, default=config.act.max_items)
+    parser.add_argument("--only-visible", action="store_true", default=None)
+    parser.add_argument("--include-hidden", action="store_true")
+    parser.add_argument("--json", action="store_true")
+
+
+def _resolve_act_action(args: argparse.Namespace, parser: argparse.ArgumentParser) -> None:
+    chosen = [name for name in ("set_text", "send_keys") if getattr(args, name) is not None]
+    if args.action is not None:
+        chosen.append(args.action)
+    if len(chosen) != 1:
+        parser.error(
+            "act requires exactly one action "
+            "(--click, --double-click, --right-click, --invoke, --focus, --set-text or --send-keys)"
+        )
+    action = chosen[0]
+    args.action = action
+    args.value = getattr(args, action) if action in ("set_text", "send_keys") else None
+
+
+def _validate_act_target(args: argparse.Namespace, parser: argparse.ArgumentParser) -> None:
+    targets = [args.at is not None, args.window_title is not None, args.window_handle is not None]
+    if sum(1 for target in targets if target) != 1:
+        parser.error("act requires exactly one of --at, --window-title or --window-handle")
+    if args.at is not None and _has_element_conditions(args):
+        parser.error("--at selects the target directly and cannot be combined with element conditions")
+
+
+def _has_element_conditions(args: argparse.Namespace) -> bool:
+    named = ("text", "text_re", "auto_id", "control_type", "class_name")
+    return any(getattr(args, name) is not None for name in named) or args.enabled_only or args.index is not None
 
 
 def _validate_visible_options(args: argparse.Namespace, parser: argparse.ArgumentParser) -> None:

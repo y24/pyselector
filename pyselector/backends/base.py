@@ -44,6 +44,14 @@ class BackendInspector(ABC):
         raise NotImplementedError
 
     @abstractmethod
+    def perform_action(self, element: ElementInfo, action: str, value: str | None = None) -> str:
+        raise NotImplementedError
+
+    @abstractmethod
+    def refresh_element(self, element: ElementInfo) -> ElementInfo:
+        raise NotImplementedError
+
+    @abstractmethod
     def walk_tree(
         self,
         root: ElementInfo,

@@ -12,6 +12,8 @@ from pyselector.backends.uia_inspector import UiaInspector
 from pyselector.backends.win32_inspector import Win32Inspector
 from pyselector.countdown import wait_with_countdown
 from pyselector.cursor import get_cursor_position
+from pyselector.diff import diff_nodes, diff_tree_payloads, load_tree_payload
+from pyselector.model.act_result import ActResult
 from pyselector.model.element_info import ElementInfo
 from pyselector.model.find_result import FindMatch, FindResult
 from pyselector.model.inspection_result import BackendInspection, CursorPosition, InspectionResult, TreeResult
@@ -19,13 +21,18 @@ from pyselector.model.window_summary import WindowSummary, WindowsResult
 from pyselector.overlay.selector_overlay import select_point_with_overlay
 from pyselector.model.selector_candidate import SelectorEvaluation
 from pyselector.output.json_output import (
+    format_act_result_json,
+    format_diff_results_json,
     format_find_results_json,
     format_inspection_result_json,
     format_tree_results_json,
     format_windows_results_json,
+    hierarchy_node_to_dict,
 )
 from pyselector.output.log_file import save_inspection_log
 from pyselector.output.text_output import (
+    format_act_result,
+    format_diff_result,
     format_find_result,
     format_inspection_result,
     format_tree_result,
@@ -36,6 +43,7 @@ from pyselector.selector.generator import generate_candidates, sort_candidates, 
 from pyselector.selector.snippet import build_code_snippet, build_window_snippet
 from pyselector.selector.warning import attach_warnings
 from pyselector.utils.dpi import setup_dpi_awareness
+from pyselector.utils.errors import ActionNotAllowedError, AmbiguousTargetError, ElementNotFoundError
 from pyselector.utils.logging import info_log
 from pyselector.utils.process import get_process_name
 
@@ -430,6 +438,150 @@ def run_find(args: Namespace) -> int:
     if not any(result.status == "success" for result in results):
         return 1
     return 0 if any(result.matches for result in results) else 1
+
+
+def run_act(args: Namespace) -> int:
+    color = _use_color()
+    json_output = getattr(args, "json", False)
+    log = _info_logger(json_output, color)
+    if not json_output:
+        info_log("pyselector started", color)
+    setup_dpi_awareness()
+
+    backend = args.backend
+    action = args.action
+    value = getattr(args, "value", None)
+    dry_run = getattr(args, "dry_run", False)
+    if not dry_run:
+        _ensure_actions_allowed(args)
+
+    inspector = _create_inspector(backend)
+    target, target_window = _resolve_act_target(inspector, backend, args, log)
+
+    diff_result = None
+    diff_handle = target_window.handle if getattr(args, "diff", False) else None
+    before_nodes: list[Any] = []
+    if diff_handle is not None:
+        log(f"{backend}: 操作前のUI要素ツリーを取得中です...")
+        before_nodes = _snapshot_nodes(backend, diff_handle, args)
+
+    method = None
+    performed = False
+    element_after = None
+    if dry_run:
+        log(f"{backend}: --dry-run のため操作は実行しません。")
+    else:
+        log(f"{backend}: {action} を実行中です...")
+        method = inspector.perform_action(target, action, value)
+        performed = True
+        log(f"{backend}: {action} を実行しました。（{method}）")
+        try:
+            element_after = inspector.refresh_element(target)
+        except Exception:
+            element_after = None
+
+    if diff_handle is not None and performed:
+        log(f"{backend}: 操作後のUI要素ツリーを取得中です...")
+        after_nodes = _snapshot_nodes(backend, diff_handle, args)
+        diff_result = diff_nodes(backend, before_nodes, after_nodes)
+
+    result = ActResult(
+        backend=backend,
+        action=action,
+        value=value,
+        performed=performed,
+        dry_run=dry_run,
+        method=method,
+        target=target,
+        target_window=target_window,
+        element_after=element_after,
+        diff=diff_result,
+    )
+    output = format_act_result_json(result) if json_output else format_act_result(result, color)
+    print(output, end="")
+    return 0
+
+
+def _ensure_actions_allowed(args: Namespace) -> None:
+    if not getattr(args, "config_allow_actions", False):
+        raise ActionNotAllowedError(
+            "UI 操作は既定で無効です。pyselector_config.json に "
+            '{"act": {"allow_actions": true}} を設定してください'
+        )
+    if not getattr(args, "allow_actions", False):
+        raise ActionNotAllowedError("UI 操作には --allow-actions の指定が必要です")
+
+
+def _resolve_act_target(
+    inspector: Any,
+    backend: str,
+    args: Namespace,
+    log: Callable[[str], None],
+) -> tuple[ElementInfo, Any]:
+    at = getattr(args, "at", None)
+    if at is not None:
+        log(f"{backend}: 座標 X={at[0]}, Y={at[1]} の要素を取得中です...")
+        target = inspector.element_from_point(at[0], at[1])
+        return target, inspector.get_target_window(target)
+
+    root = _resolve_find_root(inspector, backend, args, log)
+    log(f"{backend}: 操作対象を検索中です... (depth={args.depth}, max-items={args.max_items})")
+    elements, _ = inspector.walk_elements(root, args.depth, args.max_items, args.only_visible, None)
+    matched = _sort_find_elements([element for element in elements if _matches_find_predicates(element, args)])
+    index = getattr(args, "index", None)
+    if index is not None:
+        if index >= len(matched):
+            raise ElementNotFoundError(f"条件に一致した要素は {len(matched)} 件で、index={index} は範囲外です")
+        target = matched[index]
+    elif not matched:
+        raise ElementNotFoundError("条件に一致する要素がありません")
+    elif len(matched) > 1:
+        raise AmbiguousTargetError(
+            f"条件に一致する要素が {len(matched)} 件あります。"
+            f"条件を絞るか --index で選んでください{_candidate_hint(matched)}"
+        )
+    else:
+        target = matched[0]
+    log(f"{backend}: 操作対象を特定しました。{target.window_text!r}")
+    return target, inspector.get_target_window(target)
+
+
+def _candidate_hint(elements: list[ElementInfo], max_items: int = 5) -> str:
+    listed = ", ".join(
+        f"[{index}] {element.window_text!r}" for index, element in enumerate(elements[:max_items])
+    )
+    suffix = ", ..." if len(elements) > max_items else ""
+    return f"（{listed}{suffix}）"
+
+
+def _snapshot_nodes(backend: str, window_handle: int, args: Namespace) -> list[dict[str, Any]]:
+    """操作前後の比較用に、対象ウィンドウのツリーを取り直す。"""
+    inspector = _create_inspector(backend)
+    root = inspector.find_window_by_handle(window_handle)
+    nodes, _ = inspector.walk_tree(root, args.depth, args.max_items, args.only_visible, None)
+    return [hierarchy_node_to_dict(node) for node in nodes]
+
+
+def run_diff(args: Namespace) -> int:
+    color = _use_color()
+    json_output = getattr(args, "json", False)
+    if not json_output:
+        info_log("pyselector started", color)
+    before = load_tree_payload(args.before)
+    after = load_tree_payload(args.after)
+    diffs = diff_tree_payloads(before, after)
+    output = (
+        format_diff_results_json(diffs, compact=getattr(args, "compact", False))
+        if json_output
+        else "".join(
+            format_diff_result(diff, color, include_heading=index == 0)
+            for index, diff in enumerate(diffs)
+        )
+    )
+    print(output, end="")
+    if not any(diff.status == "success" for diff in diffs):
+        return 1
+    return 0 if any(diff.has_differences for diff in diffs) else 1
 
 
 def _resolve_find_root(inspector: Any, backend: str, args: Namespace, log: Callable[[str], None]) -> ElementInfo:

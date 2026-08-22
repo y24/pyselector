@@ -5,6 +5,7 @@ import warnings
 from dataclasses import replace
 from typing import Any, Callable
 
+from pyselector.actions import perform_action
 from pyselector.model.element_info import ElementInfo
 from pyselector.model.hierarchy import HierarchyNode
 from pyselector.model.rectangle import RectangleInfo
@@ -377,6 +378,20 @@ class PywinautoInspectorMixin:
         if wrapper is None:
             raise ElementNotFoundError(f"handle {handle:#x} の要素を取得できませんでした")
         return self._remember(wrapper)
+
+    def perform_action(self, element: ElementInfo, action: str, value: str | None = None) -> str:
+        return perform_action(self._wrapper_for(element), action, value)
+
+    def refresh_element(self, element: ElementInfo) -> ElementInfo:
+        """操作後の状態を読み直す。wrapper は再解決せず、同じ要素を見る。"""
+        wrapper = self._wrapper_for(element)
+        return element_from_wrapper(
+            wrapper,
+            self.backend_name,
+            element.depth,
+            include_children_count=False,
+            include_process_name=False,
+        )
 
     def list_windows(self, only_visible: bool = True) -> list[ElementInfo]:
         try:

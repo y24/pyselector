@@ -59,6 +59,8 @@ pyselector inspect
 | `pyselector inspect --at X,Y` | 座標を指定して要素を調査（クリック不要） |
 | `pyselector inspect --handle 0x...` | ウィンドウ自身を調査 |
 | `pyselector tree --window-handle 0x...` | タイトルに依存せずツリーを取得 |
+| `pyselector act` | 要素を操作する（既定で無効。後述） |
+| `pyselector diff` | 2 つのツリー出力を比較する |
 
 外側から内側へ絞り込むのが基本の流れです。
 
@@ -118,6 +120,72 @@ pyselector find --json --at 636,2240 --depth 2
 
 出力量の制御には `--limit`（出力件数）、`--max-items`（走査上限）、`--depth`、`--compact` を使います。`reached_limit` は走査が `--max-items` で打ち切られたこと、`truncated` は一致要素が `--limit` で切られたことを表します。
 
+### `act`（UI 操作 / 既定で無効）
+
+`act` は実際のデスクトップを操作します。他のコマンドと違い、取り消せない変更を起こしうるため、**2 段階の明示的な許可**が必要です。
+
+1. `pyselector_config.json` に `{"act": {"allow_actions": true}}` を書く
+2. 実行時に `--allow-actions` を付ける
+
+どちらか欠けていれば何も実行せず、終了コード 7（`action_not_allowed`）で終わります。
+
+```bash
+# まず --dry-run で対象を確認する（許可は不要）
+pyselector act --json --window-handle 0x2E20F46 --auto-id num5Button --click --dry-run
+
+# 実行する
+pyselector act --json --window-handle 0x2E20F46 --auto-id num5Button --click --allow-actions
+```
+
+操作は次のいずれか 1 つを指定します。
+
+| オプション | 動作 |
+| --- | --- |
+| `--click` / `--double-click` / `--right-click` | 実際のマウス操作 |
+| `--invoke` | UIA の invoke パターン（マウスを動かさない） |
+| `--focus` | フォーカスを移す |
+| `--set-text TEXT` | 入力欄のテキストを置き換える |
+| `--send-keys KEYS` | キー入力を送る（`{ENTER}` などの pywinauto 記法が使えます） |
+
+対象の指定は `find` と同じ条件です。ただし **一意に定まらない限り実行しません**。複数一致した場合は終了コード 6（`ambiguous_target`）で候補を提示するので、条件を絞るか `--index N` で選びます。`--at X,Y` は対象を直接指定するもので、他の条件とは併用できません。
+
+`--diff` を付けると、操作の前後でウィンドウのツリーを取り直して差分を返します。
+
+```bash
+pyselector act --window-handle 0x2E20F46 --auto-id TogglePaneButton --click --allow-actions --diff
+```
+
+```text
+[Act]
+  [UIA]
+    action: click
+    performed: True
+    method: click_input
+    target: "ナビゲーションを開く"  control_type="Button", auto_id="TogglePaneButton"
+    after: "ナビゲーションを閉じる"
+
+[Diff]
+  [UIA]
+    added: 22, removed: 0, changed: 1, unchanged: 51
+    + 6 ListItem "標準 電卓"  auto_id="Standard", class_name="Microsoft.UI.Xaml.Controls.NavigationViewItem"
+    + 6 ListItem "関数電卓 電卓"  auto_id="Scientific", class_name="Microsoft.UI.Xaml.Controls.NavigationViewItem"
+    ...
+```
+
+閉じているメニューの中身のように、その時点では見えていない画面に到達するための手段です。
+
+### `diff`（ツリー出力の比較）
+
+`tree --json` の出力ファイル同士を比較します。
+
+```bash
+pyselector tree --json --window-handle 0x2E20F46 --depth 8 > before.json
+pyselector tree --json --window-handle 0x2E20F46 --depth 8 > after.json
+pyselector diff --json before.json after.json
+```
+
+`added` / `removed` / `changed`（属性ごとの before・after）と `summary` を返します。終了コードは、差分があれば 0、完全に同じなら 1 です。`--summary` で取得した出力は比較できません。
+
 ### JSON の共通仕様
 
 `--json` の出力には必ず `schema_version` / `command` / `status` が含まれます。
@@ -144,7 +212,9 @@ pyselector install-skills --claude
 
 ### 制限
 
-`pyselector` は UI を読み取るだけで、クリックや入力は行いません。メニューを開く、タブを切り替えるといった操作が必要な画面は、あらかじめ人が表示させておく必要があります。
+`act` 以外のコマンドは UI を読み取るだけで、アプリの状態を変えません。`act` が唯一の書き込み系コマンドで、上記の 2 段階の許可がなければ何も実行しません。
+
+`act` を有効にしていない場合、メニューを開く・タブを切り替えるといった操作が必要な画面は、あらかじめ人が表示させておく必要があります。
 
 ## `inspect` モードのオプション
 
@@ -407,6 +477,13 @@ pyselector tree --window-title "電.*" --title-re --backend uia
     "max_items": 200,
     "limit": 20,
     "selector_limit": 3,
+    "only_visible": true
+  },
+  "act": {
+    "allow_actions": false,
+    "backend": "uia",
+    "depth": 8,
+    "max_items": 200,
     "only_visible": true
   },
   "selector": {

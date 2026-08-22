@@ -209,6 +209,118 @@ def test_windows_rejects_conflicting_visibility_options(capsys):
     assert "--only-visible and --include-hidden cannot be used together" in capsys.readouterr().err
 
 
+@pytest.mark.parametrize(
+    "argv,expected_action,expected_value",
+    [
+        (["act", "--window-handle", "0x10", "--auto-id", "a", "--click"], "click", None),
+        (["act", "--window-handle", "0x10", "--auto-id", "a", "--double-click"], "double_click", None),
+        (["act", "--window-handle", "0x10", "--auto-id", "a", "--right-click"], "right_click", None),
+        (["act", "--window-handle", "0x10", "--auto-id", "a", "--invoke"], "invoke", None),
+        (["act", "--window-handle", "0x10", "--auto-id", "a", "--focus"], "focus", None),
+        (["act", "--window-handle", "0x10", "--auto-id", "a", "--set-text", "x"], "set_text", "x"),
+        (["act", "--window-handle", "0x10", "--auto-id", "a", "--send-keys", "{ENTER}"], "send_keys", "{ENTER}"),
+    ],
+)
+def test_act_resolves_the_requested_action(monkeypatch, argv, expected_action, expected_value):
+    captured = _capture(monkeypatch, "run_act")
+
+    result = cli.main(argv)
+
+    assert result == 0
+    assert captured["args"].action == expected_action
+    assert captured["args"].value == expected_value
+
+
+def test_act_requires_an_action(capsys):
+    result = cli.main(["act", "--window-handle", "0x10", "--auto-id", "a"])
+
+    assert result == 10
+    assert "act requires exactly one action" in capsys.readouterr().err
+
+
+def test_act_rejects_two_actions(capsys):
+    result = cli.main(["act", "--window-handle", "0x10", "--auto-id", "a", "--click", "--send-keys", "x"])
+
+    assert result == 10
+    assert "act requires exactly one action" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ["act", "--click"],
+        ["act", "--at", "1,2", "--window-handle", "0x10", "--click"],
+        ["act", "--window-title", "x", "--window-handle", "0x10", "--click"],
+    ],
+)
+def test_act_requires_exactly_one_target(argv, capsys):
+    result = cli.main(argv)
+
+    assert result == 10
+    assert "act requires exactly one of --at, --window-title or --window-handle" in capsys.readouterr().err
+
+
+def test_act_at_cannot_be_combined_with_element_conditions(capsys):
+    result = cli.main(["act", "--at", "1,2", "--auto-id", "a", "--click"])
+
+    assert result == 10
+    assert "--at selects the target directly" in capsys.readouterr().err
+
+
+def test_act_defaults_come_from_config(monkeypatch):
+    captured = _capture(monkeypatch, "run_act")
+
+    result = cli.main(["act", "--window-handle", "0x10", "--auto-id", "a", "--click"])
+
+    args = captured["args"]
+    assert result == 0
+    assert args.backend == "uia"
+    assert args.depth == 8
+    assert args.max_items == 200
+    assert args.only_visible is True
+    assert args.allow_actions is False
+    assert args.dry_run is False
+    assert args.diff is False
+    assert args.config_allow_actions is False
+
+
+def test_act_backend_does_not_accept_both(capsys):
+    result = cli.main(["act", "--window-handle", "0x10", "--auto-id", "a", "--click", "--backend", "both"])
+
+    assert result == 10
+    assert "invalid choice: 'both'" in capsys.readouterr().err
+
+
+def test_act_passes_the_config_permission_through(monkeypatch, tmp_path):
+    config_path = tmp_path / "pyselector_config.json"
+    config_path.write_text('{"act": {"allow_actions": true}}', encoding="utf-8")
+    monkeypatch.setenv("PYSELECTOR_CONFIG", str(config_path))
+    captured = _capture(monkeypatch, "run_act")
+
+    result = cli.main(["act", "--window-handle", "0x10", "--auto-id", "a", "--click", "--allow-actions"])
+
+    assert result == 0
+    assert captured["args"].config_allow_actions is True
+    assert captured["args"].allow_actions is True
+
+
+def test_diff_takes_two_paths(monkeypatch, tmp_path):
+    captured = _capture(monkeypatch, "run_diff")
+
+    result = cli.main(["diff", str(tmp_path / "a.json"), str(tmp_path / "b.json")])
+
+    assert result == 0
+    assert captured["args"].before == tmp_path / "a.json"
+    assert captured["args"].after == tmp_path / "b.json"
+
+
+def test_diff_requires_two_paths(capsys):
+    result = cli.main(["diff", "only-one.json"])
+
+    assert result == 10
+    assert "arguments are required: after" in capsys.readouterr().err
+
+
 def test_install_skills_claude_writes_skill_to_current_directory(monkeypatch, tmp_path, capsys):
     monkeypatch.chdir(tmp_path)
 

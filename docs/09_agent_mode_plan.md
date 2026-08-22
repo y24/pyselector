@@ -412,27 +412,11 @@ README にエージェント向けセクションを追加
 
 ## 9. 将来的な拡張（本計画のスコープ外）
 
-以下は有用だが、読み取り専用という現在の性質を変えるため、別計画とする。
+9.1 と 9.2 は後から実装した（15 章）。9.3 は未着手。
 
-### 9.1 UI 操作（`act`）
+### 9.1 UI 操作（`act`） / 9.2 状態差分（`diff`）
 
-メニューを開く・タブを切り替えるといった操作なしには到達できない画面がある。真に自律的な探索にはクリックや入力が要る。
-
-```bash
-pyselector act --window-handle 0x... --selector "..." --click --allow-actions
-```
-
-- 既定では無効。`--allow-actions` と設定ファイルの両方で明示的に有効化する
-- 実行するのは実際のデスクトップであり、取り消せない操作を起こしうる。この点は README とスキル文書で明記する
-
-### 9.2 状態差分（`diff`）
-
-操作前後のツリーを比較し、何が変わったかを返す。エージェントが操作の効果を判定するために有効。
-
-```bash
-pyselector tree --window-handle 0x... --json > before.json
-pyselector diff before.json after.json --json
-```
+**実装済み。** 「15. act / diff の実装」を参照。
 
 ### 9.3 常駐モード / MCP
 
@@ -652,3 +636,91 @@ Roo Code は廃止されたため、対象から外した。配布先は次の 2
 ### 14.13 テスト
 
 79 件から 172 件に増加。追加した内容は「10. テスト計画」のとおり。既存 JSON のリグレッションテスト（`tests/test_json_envelope.py`）を含む。
+
+---
+
+## 15. act / diff の実装（9.1 / 9.2）
+
+読み取り専用の探索が動いたのち、9.1 と 9.2 を実装した。テストは 172 件から 233 件になった。
+
+### 15.1 なぜ必要だったか
+
+電卓での実測で、UIA から見える要素は 52 件だった。ナビゲーションを開くと 22 要素が現れ、そこで初めて「関数電卓」「プログラマー」などの画面が見えるようになる。**閉じている UI の中身は、開くまで存在しない。** 読み取り専用のままでは、エージェントの探索範囲は「人が今表示している画面」に限られる。
+
+### 15.2 `act` の安全設計
+
+`act` は唯一の書き込み系コマンドで、既定では何もしない。計画どおり二重のゲートを実装した。
+
+```text
+1. pyselector_config.json に {"act": {"allow_actions": true}}
+2. 実行時に --allow-actions
+```
+
+どちらか欠ければ終了コード 7（`action_not_allowed`）で、対象の解決すら行わない。設定はリポジトリの持ち主が置くもので、エージェントが勝手に書き換えてはいけない旨を skill 文書に明記した。
+
+加えて、事故を減らすために次を入れた。
+
+- `--dry-run`: 対象を解決して報告するだけ。許可は不要なので、エージェントはまずこれを実行できる
+- **一意性の強制**: 条件に複数一致した場合は実行せず、終了コード 6（`ambiguous_target`）で候補を列挙する。`--index N` で明示的に選んだ場合のみ実行する
+- `--backend` から `both` を除外（両バックエンドで 2 回実行してしまうため）
+- 1 コマンド 1 操作。複数の操作フラグを同時指定するとエラー
+
+### 15.3 対象の指定方法
+
+計画の `--selector "dlg.child_window(...)"` は採用しなかった。Python 式の文字列を受け取って解釈する形になり、脆いうえに危険なため。`find` と同じ述語（`--auto-id` / `--text` / `--control-type` / `--class-name` など）に統一し、探索と操作で同じ語彙を使えるようにした。
+
+`--at X,Y` は対象を直接指すため、他の条件とは併用不可にしている。
+
+### 15.4 操作の実行方法
+
+pywinauto はバックエンドやコントロール種別で使えるメソッドが違う。`pyselector/actions.py` に「操作名 → 試すメソッドの優先順リスト」を置き、順に試して最初に成功したものを採用する。実際に使われたメソッド名は出力の `method` に含める。
+
+```text
+click        → click_input, click
+invoke       → invoke, click, click_input
+set_text     → set_edit_text, set_text
+send_keys    → type_keys
+```
+
+`--invoke` は UIA の invoke パターンで、物理マウスを動かさずに済む。可能ならこちらを使うよう skill 文書で推奨している。
+
+### 15.5 `diff` の同一性判定
+
+ノードの同一性は `(depth, control_type, class_name, automation_id)` に出現順の連番を組み合わせたキーで判定する。`window_text` をキーに含めないのは、テキストの変化こそ検出したい対象だからである。同じキーの兄弟要素（電卓のボタン群のような）は出現順で対応付ける。
+
+比較する属性は `window_text` / `rectangle` / `handle` / `control_id` / `friendly_class_name`。
+
+`--summary` で取得した出力には `nodes` が無いため比較できない。その場合はエラーではなく、理由を `message` に入れた `status: failed` を返す。
+
+終了コードは、差分があれば 0、完全に同じなら 1 とした。「探索して見つかったら 0」という他コマンドの規約と揃えている。
+
+### 15.6 `act --diff`
+
+計画ではファイル比較のみだったが、操作の前後を自分で撮るオプションを足した。エージェントの往復が 4 コマンドから 1 コマンドに減る。
+
+```bash
+pyselector act --window-handle 0x... --auto-id TogglePaneButton --click --allow-actions --diff
+```
+
+前後のスナップショットはそれぞれ新しいインスペクターで取り直す。操作によって wrapper のキャッシュが古くなるため。
+
+### 15.7 実測（電卓）
+
+```text
+act --auto-id num5Button --click --diff
+  → changed: 1 … "表示は 0 です" -> "表示は 5 です"
+
+act --auto-id TogglePaneButton --click --diff
+  → added: 22 … 標準 / 関数電卓 / グラフ計算 / プログラマー / 日付の計算 …
+
+act --auto-id NumberPad --send-keys "7" --diff
+  → changed: 1 … "表示は 5 です" -> "表示は 57 です"
+```
+
+### 15.8 追加した終了コード
+
+```text
+6  ambiguous_target      操作対象が一意に定まらない
+7  action_not_allowed    UI 操作が許可されていない
+8  action_failed         操作の実行そのものが失敗
+```

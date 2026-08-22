@@ -52,6 +52,16 @@ class FindConfig:
 
 
 @dataclass(frozen=True)
+class ActConfig:
+    # UI 操作は既定で無効。設定と --allow-actions の両方で明示的に有効化する。
+    allow_actions: bool = False
+    backend: str = "uia"
+    depth: int = 8
+    max_items: int = 200
+    only_visible: bool = True
+
+
+@dataclass(frozen=True)
 class SelectorConfig:
     evaluation_max_items: int = 10
     found_index_trial_count: int = 3
@@ -63,6 +73,7 @@ class AppConfig:
     tree: TreeConfig = TreeConfig()
     windows: WindowsConfig = WindowsConfig()
     find: FindConfig = FindConfig()
+    act: ActConfig = ActConfig()
     selector: SelectorConfig = SelectorConfig()
     loaded_path: Path | None = None
 
@@ -92,12 +103,13 @@ def _resolve_config_path() -> Path | None:
 
 
 def _build_config(raw: dict[str, Any], path: Path) -> AppConfig:
-    allowed_sections = {"inspect", "tree", "windows", "find", "selector"}
+    allowed_sections = {"inspect", "tree", "windows", "find", "act", "selector"}
     _reject_unknown_keys(raw, allowed_sections, "config", path)
     inspect = _section(raw, "inspect", path)
     tree = _section(raw, "tree", path)
     windows = _section(raw, "windows", path)
     find = _section(raw, "find", path)
+    act = _section(raw, "act", path)
     selector = _section(raw, "selector", path)
     return AppConfig(
         inspect=InspectConfig(
@@ -130,6 +142,13 @@ def _build_config(raw: dict[str, Any], path: Path) -> AppConfig:
             selector_limit=_positive_int(find, "selector_limit", 3, path),
             only_visible=_bool(find, "only_visible", True, path),
         ),
+        act=ActConfig(
+            allow_actions=_bool(act, "allow_actions", False, path),
+            backend=_choice(act, "backend", "uia", {"win32", "uia"}, path),
+            depth=_non_negative_int(act, "depth", 8, path),
+            max_items=_positive_int(act, "max_items", 200, path),
+            only_visible=_bool(act, "only_visible", True, path),
+        ),
         selector=SelectorConfig(
             evaluation_max_items=_positive_int(selector, "evaluation_max_items", 10, path),
             found_index_trial_count=_positive_int(selector, "found_index_trial_count", 3, path),
@@ -150,6 +169,8 @@ def _section(raw: dict[str, Any], key: str, path: Path) -> dict[str, Any]:
         allowed = {"backend", "max_items", "only_visible"}
     elif key == "find":
         allowed = {"backend", "scope", "timeout", "depth", "max_items", "limit", "selector_limit", "only_visible"}
+    elif key == "act":
+        allowed = {"allow_actions", "backend", "depth", "max_items", "only_visible"}
     else:
         allowed = {"evaluation_max_items", "found_index_trial_count"}
     _reject_unknown_keys(value, allowed, key, path)

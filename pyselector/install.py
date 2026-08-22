@@ -63,6 +63,8 @@ pyselector inspect --json --at 636,2240
 
 Each step narrows the search. Do not start from step 5, and do not dump a whole tree when `--summary` or `find` answers the question.
 
+To reach a screen that is not visible yet (a closed menu, another tab), see `act` below. It is disabled by default.
+
 ## Common Rules
 
 - Run commands from the repository root unless the user specifies another working directory.
@@ -141,6 +143,62 @@ pyselector inspect --json --handle 0x2E20F46
 
 The screen may have changed since the coordinate was captured. Always check the returned `element.window_text` / `control_type` against what you expected before trusting the result.
 
+## `act`: Drive The UI (opt-in, off by default)
+
+`act` performs a real action on the real desktop. It is **disabled unless the repository owner enabled it**, and it needs two separate opt-ins:
+
+1. `pyselector_config.json` must contain `{"act": {"allow_actions": true}}`
+2. the command must pass `--allow-actions`
+
+If either is missing the command fails with `action_not_allowed` (exit code 7) and nothing happens. **Do not edit the config file yourself to turn this on.** If a task needs UI actions and the config does not allow them, tell the user and stop.
+
+Always resolve the target with `--dry-run` first. It needs no permission and reports exactly which element would be acted on:
+
+```powershell
+pyselector act --json --window-handle 0x2E20F46 --auto-id num5Button --click --dry-run
+```
+
+Then perform the action:
+
+```powershell
+pyselector act --json --window-handle 0x2E20F46 --auto-id num5Button --click --allow-actions
+pyselector act --json --window-handle 0x2E20F46 --auto-id searchBox --set-text "query" --allow-actions
+pyselector act --json --window-handle 0x2E20F46 --auto-id searchBox --send-keys "{ENTER}" --allow-actions
+pyselector act --json --at 636,2240 --click --allow-actions
+```
+
+Exactly one action is required: `--click`, `--double-click`, `--right-click`, `--invoke`, `--focus`, `--set-text TEXT`, or `--send-keys KEYS`.
+
+Target selection uses the same conditions as `find`, and **the target must be unique**. If several elements match, the command refuses with `ambiguous_target` (exit code 6) and lists the candidates; narrow the conditions or pass `--index N`. `--at X,Y` names the target directly and cannot be combined with conditions.
+
+Add `--diff` to see what the action changed in that window:
+
+```powershell
+pyselector act --json --window-handle 0x2E20F46 --auto-id TogglePaneButton --click --allow-actions --diff
+```
+
+This is how you reach screens that are not visible yet: open a menu or switch a tab, read the `diff.added` nodes, then `find` inside the new elements.
+
+Rules for acting:
+
+- Prefer `--invoke` over `--click` where it works: it uses the UIA invoke pattern instead of moving the physical mouse.
+- One action per command. Re-read the state between actions rather than assuming it.
+- Never act on a target you have not resolved with `--dry-run` or `find` first.
+- Do not use `act` to dismiss dialogs, confirm prompts, delete data, submit forms, or send anything, unless the user asked for that specific step.
+
+## `diff`: Compare Two Snapshots
+
+```powershell
+pyselector tree --json --window-handle 0x2E20F46 --depth 8 > before.json
+# ... something changes the screen ...
+pyselector tree --json --window-handle 0x2E20F46 --depth 8 > after.json
+pyselector diff --json before.json after.json
+```
+
+Read `results[].added`, `removed`, `changed` (each with `before` / `after` values per field), and `summary`. Exit code 0 means differences were found, 1 means the two snapshots are identical. Snapshots taken with `--summary` cannot be compared.
+
+Use `act --diff` instead when you are the one causing the change; it takes both snapshots for you.
+
 ## JSON Contract
 
 Every `--json` response carries `schema_version`, `command`, and `status`.
@@ -173,7 +231,8 @@ For `tree`, read:
 
 ## Notes
 
-- `pyselector` only reads the UI. It never clicks, types, or changes application state, so it cannot open a menu or switch a tab for you. Ask the user to bring the target screen into view first.
+- Every command except `act` only reads the UI. `act` is the single command that changes application state, and it stays inert unless both opt-ins above are present.
+- If `act` is not enabled, you cannot open a menu or switch a tab yourself. Ask the user to bring the target screen into view first.
 - Every invocation starts a new process, so handles and coordinates from a previous run are only valid while the screen is unchanged.
 """
 

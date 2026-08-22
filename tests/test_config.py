@@ -206,6 +206,32 @@ def test_default_windows_and_find_config(monkeypatch):
     assert config.find.only_visible is True
 
 
+def test_ui_actions_are_disabled_by_default(monkeypatch):
+    monkeypatch.delenv("PYSELECTOR_CONFIG", raising=False)
+    monkeypatch.chdir(FIXTURES)
+
+    config = load_config()
+
+    assert config.act.allow_actions is False
+    assert config.act.backend == "uia"
+    assert config.act.depth == 8
+    assert config.act.max_items == 200
+    assert config.act.only_visible is True
+
+
+def test_load_config_reads_the_act_section(monkeypatch, tmp_path):
+    config_path = tmp_path / "pyselector_config.json"
+    config_path.write_text('{"act": {"allow_actions": true, "backend": "win32", "depth": 4}}', encoding="utf-8")
+    monkeypatch.delenv("PYSELECTOR_CONFIG", raising=False)
+    monkeypatch.chdir(tmp_path)
+
+    config = load_config()
+
+    assert config.act.allow_actions is True
+    assert config.act.backend == "win32"
+    assert config.act.depth == 4
+
+
 def test_load_config_reads_windows_and_find_sections(monkeypatch, tmp_path):
     config_path = tmp_path / "pyselector_config.json"
     config_path.write_text(
@@ -232,6 +258,9 @@ def test_load_config_reads_windows_and_find_sections(monkeypatch, tmp_path):
         ('{"find": {"limit": 0}}', "config value must be a positive integer"),
         ('{"find": {"depth": -1}}', "config value must be a non-negative integer"),
         ('{"find": {"only_visible": "yes"}}', "config value must be true or false"),
+        ('{"act": {"allow_actions": "yes"}}', "config value must be true or false"),
+        ('{"act": {"backend": "both"}}', "config value must be one of"),
+        ('{"act": {"unknown": true}}', "unknown config key in act"),
     ],
 )
 def test_load_config_rejects_invalid_agent_sections(monkeypatch, tmp_path, raw, message):

@@ -29,6 +29,13 @@
     "selector_limit": 3,
     "only_visible": true
   },
+  "act": {
+    "allow_actions": false,
+    "backend": "uia",
+    "depth": 8,
+    "max_items": 200,
+    "only_visible": true
+  },
   "selector": {
     "evaluation_max_items": 10,
     "found_index_trial_count": 3
