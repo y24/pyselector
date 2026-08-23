@@ -62,6 +62,21 @@ class ActConfig:
 
 
 @dataclass(frozen=True)
+class ServerConfig:
+    """常駐モードの設定。
+
+    enabled が既定で false なので、設定を書かない限りクライアントはサーバーを
+    探しにいかない。既存利用者の挙動は変わらない（設計 9）。
+    """
+
+    enabled: bool = False
+    auto_start: bool = True
+    idle_timeout: int = 300
+    max_refs: int = 5000
+    connect_timeout: int = 30
+
+
+@dataclass(frozen=True)
 class SelectorConfig:
     evaluation_max_items: int = 10
     found_index_trial_count: int = 3
@@ -75,6 +90,7 @@ class AppConfig:
     find: FindConfig = FindConfig()
     act: ActConfig = ActConfig()
     selector: SelectorConfig = SelectorConfig()
+    server: ServerConfig = ServerConfig()
     loaded_path: Path | None = None
 
 
@@ -103,7 +119,7 @@ def _resolve_config_path() -> Path | None:
 
 
 def _build_config(raw: dict[str, Any], path: Path) -> AppConfig:
-    allowed_sections = {"inspect", "tree", "windows", "find", "act", "selector"}
+    allowed_sections = {"inspect", "tree", "windows", "find", "act", "selector", "server"}
     _reject_unknown_keys(raw, allowed_sections, "config", path)
     inspect = _section(raw, "inspect", path)
     tree = _section(raw, "tree", path)
@@ -111,6 +127,7 @@ def _build_config(raw: dict[str, Any], path: Path) -> AppConfig:
     find = _section(raw, "find", path)
     act = _section(raw, "act", path)
     selector = _section(raw, "selector", path)
+    server = _section(raw, "server", path)
     return AppConfig(
         inspect=InspectConfig(
             delay=_non_negative_int(inspect, "delay", 5, path),
@@ -153,6 +170,13 @@ def _build_config(raw: dict[str, Any], path: Path) -> AppConfig:
             evaluation_max_items=_positive_int(selector, "evaluation_max_items", 10, path),
             found_index_trial_count=_positive_int(selector, "found_index_trial_count", 3, path),
         ),
+        server=ServerConfig(
+            enabled=_bool(server, "enabled", False, path),
+            auto_start=_bool(server, "auto_start", True, path),
+            idle_timeout=_non_negative_int(server, "idle_timeout", 300, path),
+            max_refs=_positive_int(server, "max_refs", 5000, path),
+            connect_timeout=_positive_int(server, "connect_timeout", 30, path),
+        ),
         loaded_path=path,
     )
 
@@ -171,6 +195,8 @@ def _section(raw: dict[str, Any], key: str, path: Path) -> dict[str, Any]:
         allowed = {"backend", "scope", "timeout", "depth", "max_items", "limit", "selector_limit", "only_visible"}
     elif key == "act":
         allowed = {"allow_actions", "backend", "depth", "max_items", "only_visible"}
+    elif key == "server":
+        allowed = {"enabled", "auto_start", "idle_timeout", "max_refs", "connect_timeout"}
     else:
         allowed = {"evaluation_max_items", "found_index_trial_count"}
     _reject_unknown_keys(value, allowed, key, path)

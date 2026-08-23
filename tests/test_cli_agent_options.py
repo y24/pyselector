@@ -73,7 +73,7 @@ def test_inspect_at_and_handle_are_exclusive(capsys):
     result = cli.main(["inspect", "--at", "1,2", "--handle", "0x10"])
 
     assert result == 10
-    assert "--at and --handle cannot be used together" in capsys.readouterr().err
+    assert "--at, --handle and --ref cannot be used together" in capsys.readouterr().err
 
 
 @pytest.mark.parametrize("target", [["--at", "1,2"], ["--handle", "0x10"]])
@@ -81,7 +81,7 @@ def test_inspect_delay_cannot_be_combined_with_non_interactive_target(target, ca
     result = cli.main(["inspect", "--delay", "3", *target])
 
     assert result == 10
-    assert "--delay cannot be used with --at or --handle" in capsys.readouterr().err
+    assert "--delay cannot be used with --at, --handle or --ref" in capsys.readouterr().err
 
 
 def test_inspect_without_at_keeps_overlay_defaults(monkeypatch):
@@ -108,7 +108,7 @@ def test_tree_requires_exactly_one_target(argv, capsys):
     result = cli.main(argv)
 
     assert result == 10
-    assert "tree requires exactly one of --cursor, --window-title or --window-handle" in capsys.readouterr().err
+    assert "tree requires exactly one of --cursor, --ref, --window-title or --window-handle" in capsys.readouterr().err
 
 
 def test_tree_accepts_window_handle(monkeypatch):
@@ -134,7 +134,7 @@ def test_find_requires_exactly_one_target(argv, capsys):
     result = cli.main(argv)
 
     assert result == 10
-    assert "find requires exactly one of --at, --window-title or --window-handle" in capsys.readouterr().err
+    assert "find requires exactly one of --at, --ref, --window-title or --window-handle" in capsys.readouterr().err
 
 
 def test_find_uses_config_defaults(monkeypatch):
@@ -257,7 +257,7 @@ def test_act_requires_exactly_one_target(argv, capsys):
     result = cli.main(argv)
 
     assert result == 10
-    assert "act requires exactly one of --at, --window-title or --window-handle" in capsys.readouterr().err
+    assert "act requires exactly one of --at, --ref, --window-title or --window-handle" in capsys.readouterr().err
 
 
 def test_act_at_cannot_be_combined_with_element_conditions(capsys):

@@ -20,6 +20,10 @@ class BackendInspector(ABC):
         raise NotImplementedError
 
     @abstractmethod
+    def element_from_ref(self, ref: str) -> ElementInfo:
+        raise NotImplementedError
+
+    @abstractmethod
     def get_target_window(self, element: ElementInfo) -> TargetWindowInfo:
         raise NotImplementedError
 

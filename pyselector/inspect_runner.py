@@ -42,8 +42,15 @@ from pyselector.selector.evaluator import append_found_index_candidates, evaluat
 from pyselector.selector.generator import generate_candidates, sort_candidates, deduplicate_candidates
 from pyselector.selector.snippet import build_code_snippet, build_window_snippet
 from pyselector.selector.warning import attach_warnings
+from pyselector.server import session as server_session
+from pyselector.server.refs import ref_backend
 from pyselector.utils.dpi import setup_dpi_awareness
-from pyselector.utils.errors import ActionNotAllowedError, AmbiguousTargetError, ElementNotFoundError
+from pyselector.utils.errors import (
+    ActionNotAllowedError,
+    AmbiguousTargetError,
+    ElementNotFoundError,
+    StaleRefError,
+)
 from pyselector.utils.logging import info_log
 from pyselector.utils.process import get_process_name
 
@@ -75,7 +82,14 @@ def run_inspect(args: Namespace, point_selector: Callable[[], tuple[int, int] | 
         info_log(f"{config_path.name} loaded", color)
     setup_dpi_awareness()
     handle = getattr(args, "handle", None)
-    point = _select_inspect_point(args, color, json_output, point_selector)
+    ref = getattr(args, "ref", None)
+    if ref is not None:
+        # ref は要素そのものを指す。座標を選ぶ手順を通らないので、
+        # cursor_position は解決した要素の中心を参考情報として載せる。
+        resolved = _create_inspector(ref_backend(ref)).element_from_ref(ref)
+        point = _element_point(resolved)
+    else:
+        point = _select_inspect_point(args, color, json_output, point_selector)
     if point is None:
         if not json_output:
             info_log("選択をキャンセルしました。", color)
@@ -84,16 +98,22 @@ def run_inspect(args: Namespace, point_selector: Callable[[], tuple[int, int] | 
 
     options = _selector_options_from_args(args)
     inspections: list[BackendInspection] = []
-    for backend in _resolve_backends(args.backend):
+    for backend in _resolve_backends(args.backend, ref):
         inspector = _create_inspector(backend)
         try:
-            if handle is None:
+            if ref is not None:
+                log(f"{backend}: ref {ref} の要素を取得中です...")
+                element = inspector.element_from_ref(ref)
+            elif handle is None:
                 log(f"{backend}: カーソル下の要素を取得中です...")
                 element = inspector.element_from_point(cursor.x, cursor.y)
             else:
                 log(f"{backend}: handle {handle:#x} の要素を取得中です...")
                 element = inspector.element_from_handle(handle)
             inspections.append(_build_backend_inspection(backend, inspector, element, cursor, options, log))
+        except StaleRefError:
+            # 失効した ref は backend 単位の失敗ではなく、要求そのものの失敗として返す。
+            raise
         except Exception as exc:
             inspections.append(BackendInspection(backend=backend, status="failed", message=str(exc)))
 
@@ -263,7 +283,8 @@ def run_tree(args: Namespace) -> int:
     if not json_output:
         info_log("pyselector started", color)
     setup_dpi_awareness()
-    backends = _resolve_backends(args.backend)
+    ref = getattr(args, "ref", None)
+    backends = _resolve_backends(args.backend, ref)
     cursor = None
     if args.cursor:
         if json_output:
@@ -278,7 +299,10 @@ def run_tree(args: Namespace) -> int:
     for backend in backends:
         inspector = _create_inspector(backend)
         try:
-            if cursor is not None:
+            if ref is not None:
+                log(f"{backend}: ref {ref} の起点要素を取得中です...")
+                root = inspector.element_from_ref(ref)
+            elif cursor is not None:
                 log(f"{backend}: カーソル下の起点要素を取得中です...")
                 root = inspector.element_from_point(cursor.x, cursor.y)
             elif window_handle is not None:
@@ -304,6 +328,8 @@ def run_tree(args: Namespace) -> int:
                     reached_limit=reached_limit,
                 )
             )
+        except StaleRefError:
+            raise
         except Exception as exc:
             results.append(
                 TreeResult(
@@ -381,7 +407,7 @@ def run_find(args: Namespace) -> int:
 
     options = _selector_options_from_args(args)
     results: list[FindResult] = []
-    for backend in _resolve_backends(args.backend):
+    for backend in _resolve_backends(args.backend, getattr(args, "ref", None)):
         inspector = _create_inspector(backend)
         try:
             root = _resolve_find_root(inspector, backend, args, log)
@@ -422,6 +448,8 @@ def run_find(args: Namespace) -> int:
                     truncated=truncated,
                 )
             )
+        except StaleRefError:
+            raise
         except Exception as exc:
             results.append(FindResult(backend=backend, status="failed", message=str(exc)))
 
@@ -448,7 +476,8 @@ def run_act(args: Namespace) -> int:
         info_log("pyselector started", color)
     setup_dpi_awareness()
 
-    backend = args.backend
+    ref = getattr(args, "ref", None)
+    backend = ref_backend(ref) if ref is not None else args.backend
     action = args.action
     value = getattr(args, "value", None)
     dry_run = getattr(args, "dry_run", False)
@@ -503,6 +532,12 @@ def run_act(args: Namespace) -> int:
 
 
 def _ensure_actions_allowed(args: Namespace) -> None:
+    """UI 操作を実行してよいかを確かめる。
+
+    本質的な関門から順に見る。設定とコマンドのフラグが「この操作を許すか」を決め、
+    常駐サーバーの上限は「このデーモンに UI を触らせるか」という別の軸なので最後に見る。
+    順序を逆にすると、設定を書いていないだけの利用者に的外れな理由を返してしまう。
+    """
     if not getattr(args, "config_allow_actions", False):
         raise ActionNotAllowedError(
             "UI 操作は既定で無効です。pyselector_config.json に "
@@ -510,6 +545,16 @@ def _ensure_actions_allowed(args: Namespace) -> None:
         )
     if not getattr(args, "allow_actions", False):
         raise ActionNotAllowedError("UI 操作には --allow-actions の指定が必要です")
+    session = server_session.current_session()
+    if session is not None and not session.allow_actions:
+        # 設定もフラグも揃っているのに、このデーモンだけが UI 操作を持たない状態。
+        # 自動起動なら設定を引き継ぐので、ここに来るのは手動起動したサーバーか、
+        # act を許可していない別のディレクトリから先に自動起動された場合。
+        raise ActionNotAllowedError(
+            "この常駐サーバーは UI 操作を許可していません。"
+            "pyselector serve --stop で止めてから pyselector serve --allow-actions で"
+            "起動し直すか、--server off でローカル実行してください"
+        )
 
 
 def _resolve_act_target(
@@ -518,6 +563,14 @@ def _resolve_act_target(
     args: Namespace,
     log: Callable[[str], None],
 ) -> tuple[ElementInfo, Any]:
+    ref = getattr(args, "ref", None)
+    if ref is not None and not _has_element_conditions(args):
+        # ref は操作対象そのものを指す。生存確認は element_from_ref が行うので、
+        # 失効していればここで止まり、別の要素を操作することはない（設計 7.4）。
+        log(f"{backend}: ref {ref} の要素を取得中です...")
+        target = inspector.element_from_ref(ref)
+        return target, inspector.get_target_window(target)
+
     at = getattr(args, "at", None)
     if at is not None:
         log(f"{backend}: 座標 X={at[0]}, Y={at[1]} の要素を取得中です...")
@@ -585,6 +638,10 @@ def run_diff(args: Namespace) -> int:
 
 
 def _resolve_find_root(inspector: Any, backend: str, args: Namespace, log: Callable[[str], None]) -> ElementInfo:
+    ref = getattr(args, "ref", None)
+    if ref is not None:
+        log(f"{backend}: ref {ref} の起点要素を取得中です...")
+        return inspector.element_from_ref(ref)
     at = getattr(args, "at", None)
     if at is not None:
         log(f"{backend}: 座標 X={at[0]}, Y={at[1]} の起点要素を取得中です...")
@@ -628,6 +685,20 @@ def _sort_find_elements(elements: list[ElementInfo]) -> list[ElementInfo]:
         )
 
     return sorted(elements, key=sort_key)
+
+
+def _has_element_conditions(args: Namespace) -> bool:
+    """act で ref を探索の起点として使っているか、対象そのものとして使っているかを分ける。"""
+    named = ("text", "text_re", "auto_id", "control_type", "class_name")
+    if any(getattr(args, name, None) is not None for name in named):
+        return True
+    return bool(getattr(args, "enabled_only", False)) or getattr(args, "index", None) is not None
+
+
+def _element_point(element: ElementInfo) -> tuple[int, int]:
+    if element.rectangle is None:
+        return (0, 0)
+    return element.rectangle.center
 
 
 def _element_center(element: ElementInfo) -> CursorPosition | None:
@@ -679,11 +750,30 @@ def _filter_windows(windows: list[WindowSummary], args: Namespace) -> list[Windo
     return filtered
 
 
-def _resolve_backends(value: str) -> list[str]:
+def _resolve_backends(value: str, ref: str | None = None) -> list[str]:
+    """走査する backend を決める。
+
+    ref は backend を自分で名乗るため、--backend より優先する。ref が指す
+    wrapper は片方の backend にしか存在せず、もう一方は必ず失敗するため。
+    """
+    if ref is not None:
+        return [ref_backend(ref)]
     return ["win32", "uia"] if value == "both" else [value]
 
 
 def _create_inspector(backend: str) -> Any:
+    """backend に対応する inspector を返す。
+
+    常駐モードではサーバーのセッションが同じ inspector を使い回す。そうしないと
+    要求ごとに pywinauto の wrapper が捨てられ、ref がすべて失効してしまう。
+    """
+    session = server_session.current_session()
+    if session is not None:
+        return session.inspector(backend, _new_inspector)
+    return _new_inspector(backend)
+
+
+def _new_inspector(backend: str) -> Any:
     if backend == "win32":
         return Win32Inspector()
     if backend == "uia":

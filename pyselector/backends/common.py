@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 import warnings
+from collections import OrderedDict
 from dataclasses import replace
 from typing import Any, Callable
 
@@ -10,7 +11,8 @@ from pyselector.model.element_info import ElementInfo
 from pyselector.model.hierarchy import HierarchyNode
 from pyselector.model.rectangle import RectangleInfo
 from pyselector.model.target_window import TargetWindowInfo
-from pyselector.utils.errors import ElementNotFoundError, TargetWindowNotFoundError
+from pyselector.server.refs import RefRegistry, stale_ref_message
+from pyselector.utils.errors import ElementNotFoundError, StaleRefError, TargetWindowNotFoundError
 from pyselector.utils.process import get_process_name
 
 
@@ -88,6 +90,27 @@ def element_from_wrapper(
     )
 
 
+#: 常駐していないときの参照表に付ける印。ref はプロセス終了とともに消えるため
+#: 外には出さないが、形式は常駐時と揃えておく。
+LOCAL_INSTANCE_ID = "local"
+
+
+def is_wrapper_alive(wrapper: Any) -> bool:
+    """wrapper がまだ画面上の要素を指しているかを軽く確かめる。
+
+    画面が変わると wrapper は無効になる。呼べる ``is_visible`` が無い実装は
+    生存とみなす（判定できないことを失効の根拠にしない）。
+    """
+    checker = getattr(wrapper, "is_visible", None)
+    if not callable(checker):
+        return True
+    try:
+        checker()
+    except Exception:
+        return False
+    return True
+
+
 def element_info_matches(element_info: Any, condition: dict[str, Any]) -> bool:
     if "handle" in condition and getattr(element_info, "handle", None) != condition["handle"]:
         return False
@@ -142,9 +165,20 @@ class PywinautoInspectorMixin:
 
     def __init__(self) -> None:
         self._last_wrapper: Any = None
-        self._wrapper_by_handle: dict[int, Any] = {}
-        self._wrapper_by_ref: dict[str, Any] = {}
-        self._ref_counter = 0
+        # handle からの逆引き。参照表と同じく、常駐プロセスでは際限なく増えうるので
+        # 参照表の上限に合わせて古いものから捨てる。
+        self._wrapper_by_handle: "OrderedDict[int, Any]" = OrderedDict()
+        # プロセス内だけで使う参照表。上限は設けない（1 コマンドで終わるため）。
+        # 常駐モードではサーバーが共有の参照表に差し替える。
+        self._refs = RefRegistry(LOCAL_INSTANCE_ID, max_refs=None)
+
+    def use_ref_registry(self, registry: RefRegistry) -> None:
+        """サーバーが持つ共有の参照表に差し替える。
+
+        backend をまたいで 1 つの表を使うことで、ref のインスタンス ID と連番が
+        サーバー全体で一意になる。
+        """
+        self._refs = registry
 
     def _desktop(self) -> Any:
         try:
@@ -169,17 +203,27 @@ class PywinautoInspectorMixin:
 
         handle を持たない UIA 要素でも、後から同じ wrapper を解決できるようにする。
         """
-        self._ref_counter += 1
-        ref = f"{self.backend_name}:{self._ref_counter}"
-        self._wrapper_by_ref[ref] = wrapper
+        ref = self._refs.issue(self.backend_name, wrapper)
         if element.handle is not None:
             self._wrapper_by_handle[element.handle] = wrapper
+            self._wrapper_by_handle.move_to_end(element.handle)
+            self._evict_handles()
         return replace(element, ref=ref)
 
+    def _evict_handles(self) -> None:
+        limit = self._refs.max_refs
+        if limit is None:
+            return
+        while len(self._wrapper_by_handle) > limit:
+            self._wrapper_by_handle.popitem(last=False)
+
     def _wrapper_for(self, element: ElementInfo) -> Any:
-        if element.ref is not None and element.ref in self._wrapper_by_ref:
-            return self._wrapper_by_ref[element.ref]
+        if element.ref is not None:
+            wrapper = self._refs.get(element.ref)
+            if wrapper is not None:
+                return wrapper
         if element.handle is not None and element.handle in self._wrapper_by_handle:
+            self._wrapper_by_handle.move_to_end(element.handle)
             return self._wrapper_by_handle[element.handle]
         if self._last_wrapper is not None:
             return self._last_wrapper
@@ -368,6 +412,18 @@ class PywinautoInspectorMixin:
 
     def find_window_by_handle(self, handle: int) -> ElementInfo:
         return self.element_from_handle(handle)
+
+    def element_from_ref(self, ref: str) -> ElementInfo:
+        """参照 ID から要素を引き直す。
+
+        参照表に無い、あるいは wrapper が既に死んでいる場合は ``stale_ref`` にする。
+        act が失効した ref で別の要素を操作しないよう、使う前に必ずここを通す（設計 7.4）。
+        """
+        wrapper = self._refs.get(ref)
+        if wrapper is None or not is_wrapper_alive(wrapper):
+            raise StaleRefError(stale_ref_message(ref))
+        self._last_wrapper = wrapper
+        return replace(element_from_wrapper(wrapper, self.backend_name), ref=ref)
 
     def element_from_handle(self, handle: int) -> ElementInfo:
         try:

@@ -13,8 +13,11 @@ from pyselector.model.rectangle import RectangleInfo
 from pyselector.model.selector_candidate import SelectorCandidate, SelectorEvaluation, SelectorStep
 from pyselector.model.target_window import TargetWindowInfo
 from pyselector.model.window_summary import WindowSummary, WindowsResult
+from pyselector.server import session
 
-SCHEMA_VERSION = 1
+#: v2 で全コマンドのエンベロープに served が現れ、サーバー経由時は要素に ref が付く。
+#: v1 の上位互換で、既存キーの削除・改名はしていない（設計 10）。
+SCHEMA_VERSION = 2
 
 
 def format_inspection_result_json(result: InspectionResult) -> str:
@@ -136,7 +139,13 @@ def format_error_json(command: str | None, code: str, exit_code: int, message: s
 
 
 def _envelope(command: str, status: str, payload: dict[str, object]) -> dict[str, object]:
-    return {"schema_version": SCHEMA_VERSION, "command": command, "status": status, **payload}
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "command": command,
+        "status": status,
+        "served": session.is_serving(),
+        **payload,
+    }
 
 
 def _overall_status(results: list) -> str:
@@ -263,13 +272,14 @@ def _element_to_dict(element: ElementInfo | None, compact: bool = False) -> dict
     if element is None:
         return None
     if compact:
-        return {
+        payload = {
             "window_text": element.window_text,
             "control_type": element.control_type,
             "automation_id": element.automation_id,
             "class_name": element.class_name,
         }
-    return {
+        return _with_ref(payload, element)
+    return _with_ref({
         "backend": element.backend,
         "window_text": element.window_text,
         "control_type": element.control_type,
@@ -285,7 +295,18 @@ def _element_to_dict(element: ElementInfo | None, compact: bool = False) -> dict
         "handle": element.handle,
         "process_id": element.process_id,
         "process_name": element.process_name,
-    }
+    }, element)
+
+
+def _with_ref(payload: dict[str, object], element: ElementInfo) -> dict[str, object]:
+    """サーバー経由のときだけ ref を載せる。
+
+    ローカル実行の ref はプロセス終了とともに消えるので、出力すると
+    「後から使えるはず」と誤解させる（設計 7.2）。
+    """
+    if session.is_serving() and element.ref is not None:
+        payload["ref"] = element.ref
+    return payload
 
 
 def hierarchy_node_to_dict(node: HierarchyNode, compact: bool = False) -> dict[str, object]:

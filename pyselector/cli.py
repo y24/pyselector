@@ -24,10 +24,16 @@ from pyselector.utils.errors import (
     PySelectorError,
     SelectorEvaluationError,
     SelectorEvaluationTimeout,
+    ServerUnavailableError,
+    StaleRefError,
     TargetWindowNotFoundError,
 )
 from pyselector.utils.runtime_warnings import configure_runtime_warnings
 
+
+#: --server の選択肢。pyselector.server.client と同じ値を、import を伴わずに使うために置く。
+#: 薄いクライアントの起動コストを増やさないための措置で、値の一致はテストで固定している。
+SERVER_MODES = ("auto", "off", "require")
 
 _LOGO_PATH = Path(__file__).resolve().parent.parent / "assets" / "logo.txt"
 _RESET = "\033[0m"
@@ -58,6 +64,7 @@ def build_parser(config: AppConfig | None = None) -> argparse.ArgumentParser:
 
     tree = subparsers.add_parser("tree", help="Show UI element tree")
     tree.add_argument("--cursor", action="store_true")
+    _add_ref_option(tree)
     tree.add_argument("--window-title")
     tree.add_argument("--window-handle", type=_handle, help="Target window handle (from the windows command)")
     tree.add_argument("--title-re", action="store_true")
@@ -91,9 +98,46 @@ def build_parser(config: AppConfig | None = None) -> argparse.ArgumentParser:
     install_skills.add_argument("--copilot", action="store_true", help="Install the GitHub Copilot skill")
     install_skills.add_argument("--claude", action="store_true", help="Install the Claude Code skill")
 
+    serve = subparsers.add_parser("serve", help="Run the resident server (optional speed-up and element refs)")
+    _add_serve_options(serve, config)
+
     version = subparsers.add_parser("version", help="Show version")
     version.add_argument("--json", action="store_true")
+
+    for name, subparser in subparsers.choices.items():
+        if name not in ("serve", "install-skills"):
+            _add_server_option(subparser)
     return parser
+
+
+def _add_ref_option(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--ref",
+        metavar="REF",
+        help="Target the element with this reference id (only valid while the server holds it)",
+    )
+
+
+def _add_server_option(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--server",
+        choices=list(SERVER_MODES),
+        default=None,
+        help="auto: use the resident server when reachable, off: never, require: fail when unreachable",
+    )
+
+
+def _add_serve_options(parser: argparse.ArgumentParser, config: AppConfig) -> None:
+    parser.add_argument("--idle-timeout", type=_non_negative_int, default=config.server.idle_timeout)
+    parser.add_argument("--max-refs", type=_positive_int, default=config.server.max_refs)
+    parser.add_argument(
+        "--allow-actions",
+        action="store_true",
+        help="Let this server run act. A resident process keeps that door open, so it is opt-in",
+    )
+    parser.add_argument("--status", action="store_true", help="Report whether a server is running")
+    parser.add_argument("--stop", action="store_true", help="Ask the running server to stop")
+    parser.add_argument("--json", action="store_true")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -110,6 +154,13 @@ def main(argv: list[str] | None = None) -> int:
         parser = build_parser(config)
         args = parser.parse_args(args_list)
         command = args.command or command
+        served = _try_server(args_list, args, config, json_output)
+        if served is not None:
+            return served
+        if args.command == "serve":
+            from pyselector.serve_command import run_serve
+
+            return run_serve(args)
         if args.command == "version":
             if args.json:
                 print(format_version_json(__version__), end="")
@@ -170,6 +221,57 @@ def main(argv: list[str] | None = None) -> int:
         return EXIT_UNEXPECTED
 
 
+def _try_server(
+    args_list: list[str],
+    args: argparse.Namespace,
+    config: AppConfig,
+    json_output: bool,
+) -> int | None:
+    """常駐サーバーに丸ごと委ねられるなら委ねる。
+
+    送るのは引数解析済みの内容ではなく argv そのもの。サーバー側も同じ ``main()`` を
+    通るので、ローカル実行と挙動が分岐する余地が構造的に無くなる（設計 3）。
+    委ねなかった場合は None を返し、呼び出し側がそのままローカル実行に進む。
+    """
+    from pyselector.server import client as server_client
+    from pyselector.server import session as server_session
+
+    if server_session.is_serving():
+        # 既にサーバー内で実行している。argv には --server require がそのまま入って
+        # いるが、ここから更に投げれば再帰する。要求は既に満たされている。
+        return None
+
+    mode = server_client.resolve_mode(getattr(args, "server", None), config.server.enabled)
+    decision = server_client.decide(mode, args, json_output)
+    if not decision.use_server:
+        if mode == "require":
+            raise ServerUnavailableError(f"--server require ですが送信できません: {decision.reason}")
+        return None
+
+    response = server_client.ServerClient().request(args_list, os.getcwd(), config.server.connect_timeout)
+    if response is not None and not response.rejected:
+        sys.stdout.write(response.stdout)
+        sys.stderr.write(response.stderr)
+        return response.exit_code
+
+    if response is not None:
+        # サーバーは居たが要求を突き返した（版数違いなど）。理由を伝えてローカルへ。
+        reason = response.message or response.error or "unknown"
+        if mode == "require":
+            raise ServerUnavailableError(f"常駐サーバーが要求を拒否しました: {reason}")
+        print(f"[WARN] 常駐サーバーを使えませんでした（{reason}）。ローカルで実行します", file=sys.stderr)
+        return None
+
+    if mode == "require":
+        raise ServerUnavailableError(
+            "常駐サーバーに接続できませんでした。pyselector serve で起動してください"
+        )
+    if config.server.enabled and config.server.auto_start:
+        # 起動は待たない。この 1 回はローカルで返し、次のコマンドから常駐を使う（設計 5.2）。
+        server_client.start_server_detached(config.server.idle_timeout, config.act.allow_actions)
+    return None
+
+
 def _run_install_skills(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
     kinds = [kind for kind in ("copilot", "claude") if getattr(args, kind)]
     if not kinds:
@@ -181,6 +283,8 @@ def _run_install_skills(args: argparse.Namespace, parser: argparse.ArgumentParse
 
 _ERROR_CODES: list[tuple[type[PySelectorError], str]] = [
     (ArgumentError, "argument_error"),
+    (StaleRefError, "stale_ref"),
+    (ServerUnavailableError, "server_unavailable"),
     (ActionNotAllowedError, "action_not_allowed"),
     (ActionFailedError, "action_failed"),
     (AmbiguousTargetError, "ambiguous_target"),
@@ -227,6 +331,7 @@ def _add_inspect_options(parser: argparse.ArgumentParser, config: AppConfig) -> 
         default=None,
         help="Inspect the element identified by a window handle",
     )
+    _add_ref_option(parser)
     parser.add_argument("--backend", choices=["win32", "uia", "both"], default=config.inspect.backend)
     parser.add_argument("--scope", choices=["window", "desktop"], default=config.inspect.scope)
     parser.add_argument("--detail", action="store_true")
@@ -260,6 +365,7 @@ def _add_find_options(parser: argparse.ArgumentParser, config: AppConfig) -> Non
     parser.add_argument("--window-title", help="Search inside the window matched by title")
     parser.add_argument("--window-handle", type=_handle, help="Search inside the window with this handle")
     parser.add_argument("--at", type=_point, default=None, metavar="X,Y", help="Search below the element at this coordinate")
+    _add_ref_option(parser)
     parser.add_argument("--title-re", action="store_true", help="Treat --window-title as a regular expression")
     parser.add_argument("--text", help="Match window_text (case-insensitive substring)")
     parser.add_argument("--text-re", help="Match window_text by regular expression")
@@ -286,6 +392,7 @@ def _add_act_options(parser: argparse.ArgumentParser, config: AppConfig) -> None
     parser.add_argument("--window-title", help="Search inside the window matched by title")
     parser.add_argument("--window-handle", type=_handle, help="Search inside the window with this handle")
     parser.add_argument("--at", type=_point, default=None, metavar="X,Y", help="Act on the element at this coordinate")
+    _add_ref_option(parser)
     parser.add_argument("--title-re", action="store_true", help="Treat --window-title as a regular expression")
     parser.add_argument("--text", help="Match window_text (case-insensitive substring)")
     parser.add_argument("--text-re", help="Match window_text by regular expression")
@@ -330,9 +437,14 @@ def _resolve_act_action(args: argparse.Namespace, parser: argparse.ArgumentParse
 
 
 def _validate_act_target(args: argparse.Namespace, parser: argparse.ArgumentParser) -> None:
-    targets = [args.at is not None, args.window_title is not None, args.window_handle is not None]
+    targets = [
+        args.at is not None,
+        args.window_title is not None,
+        args.window_handle is not None,
+        args.ref is not None,
+    ]
     if sum(1 for target in targets if target) != 1:
-        parser.error("act requires exactly one of --at, --window-title or --window-handle")
+        parser.error("act requires exactly one of --at, --ref, --window-title or --window-handle")
     if args.at is not None and _has_element_conditions(args):
         parser.error("--at selects the target directly and cannot be combined with element conditions")
 
@@ -348,22 +460,28 @@ def _validate_visible_options(args: argparse.Namespace, parser: argparse.Argumen
 
 
 def _validate_inspect_target(args: argparse.Namespace, parser: argparse.ArgumentParser) -> None:
-    if args.at is not None and args.handle is not None:
-        parser.error("--at and --handle cannot be used together")
-    if args.delay is not None and (args.at is not None or args.handle is not None):
-        parser.error("--delay cannot be used with --at or --handle")
+    targets = [args.at is not None, args.handle is not None, args.ref is not None]
+    if sum(1 for target in targets if target) > 1:
+        parser.error("--at, --handle and --ref cannot be used together")
+    if args.delay is not None and any(targets):
+        parser.error("--delay cannot be used with --at, --handle or --ref")
 
 
 def _validate_tree_target(args: argparse.Namespace, parser: argparse.ArgumentParser) -> None:
-    targets = [args.cursor, args.window_title is not None, args.window_handle is not None]
+    targets = [args.cursor, args.window_title is not None, args.window_handle is not None, args.ref is not None]
     if sum(1 for target in targets if target) != 1:
-        parser.error("tree requires exactly one of --cursor, --window-title or --window-handle")
+        parser.error("tree requires exactly one of --cursor, --ref, --window-title or --window-handle")
 
 
 def _validate_find_target(args: argparse.Namespace, parser: argparse.ArgumentParser) -> None:
-    targets = [args.at is not None, args.window_title is not None, args.window_handle is not None]
+    targets = [
+        args.at is not None,
+        args.window_title is not None,
+        args.window_handle is not None,
+        args.ref is not None,
+    ]
     if sum(1 for target in targets if target) != 1:
-        parser.error("find requires exactly one of --at, --window-title or --window-handle")
+        parser.error("find requires exactly one of --at, --ref, --window-title or --window-handle")
 
 
 def _resolve_only_visible(only_visible_arg: bool | None, include_hidden: bool, config_default: bool) -> bool:

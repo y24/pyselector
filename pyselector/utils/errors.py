@@ -10,7 +10,9 @@ EXIT_SELECTOR_EVALUATION_FAILED = 5
 EXIT_AMBIGUOUS_TARGET = 6
 EXIT_ACTION_NOT_ALLOWED = 7
 EXIT_ACTION_FAILED = 8
+EXIT_STALE_REF = 9
 EXIT_ARGUMENT_ERROR = 10
+EXIT_SERVER_UNAVAILABLE = 11
 EXIT_UNEXPECTED = 100
 EXIT_INTERRUPTED = 130
 
@@ -63,3 +65,19 @@ class ActionFailedError(PySelectorError):
     """UI 操作の実行そのものが失敗した。"""
 
     exit_code = EXIT_ACTION_FAILED
+
+
+class StaleRefError(PySelectorError):
+    """要素参照（ref）が無効になっている。
+
+    サーバーを再起動した、参照表から追い出された、あるいは画面が変わって
+    要素そのものが消えた場合に送出する。act では操作を行う前に判定する。
+    """
+
+    exit_code = EXIT_STALE_REF
+
+
+class ServerUnavailableError(PySelectorError):
+    """--server require が指定されたが常駐サーバーに接続できなかった。"""
+
+    exit_code = EXIT_SERVER_UNAVAILABLE

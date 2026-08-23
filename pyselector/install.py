@@ -186,6 +186,27 @@ Rules for acting:
 - Never act on a target you have not resolved with `--dry-run` or `find` first.
 - Do not use `act` to dismiss dialogs, confirm prompts, delete data, submit forms, or send anything, unless the user asked for that specific step.
 
+## Resident Mode And Element Refs (optional)
+
+The repository owner may enable a resident server with `{"server": {"enabled": true}}` in `pyselector_config.json`. **Do not edit the config file yourself to turn this on.** When it is enabled, nothing about how you invoke commands changes; the server starts on demand and stops itself when idle.
+
+Check whether a response came from the server by reading `served` in the JSON envelope. When `served` is `true`, elements carry a `ref`:
+
+```powershell
+pyselector find --json --window-handle 0x2E20F46 --auto-id saveBtn   # -> "ref": "uia:7f3a2b:42"
+pyselector act  --json --ref uia:7f3a2b:42 --click --allow-actions
+```
+
+A `ref` names one exact element. Prefer it over re-running `find` or reusing a coordinate: it removes any chance of acting on the wrong element. `--ref` works with `inspect`, `tree`, `find`, and `act`, and replaces `--at` / `--window-handle` / `--window-title`.
+
+Rules for refs:
+
+- A `ref` is only valid while the server that issued it is running. It never appears when `served` is `false`, and you must not invent one.
+- If the screen changed or the server restarted, the command fails with `stale_ref` (exit code 9) and **performs no action**. Run `find` again to get a fresh `ref`.
+- When you need refs to be available, pass `--server require`. Without it, a command may silently fall back to local execution and return no `ref` at all. `--server require` fails with `server_unavailable` (exit code 11) when no server is reachable, which is the signal that refs are not available right now.
+- The two `act` opt-ins are unchanged in resident mode. The config is read from **your** working directory on every request, so the decision is identical to local execution.
+- A resident server also carries its own ceiling on whether it may drive the UI at all. A server started on demand inherits the config's `act.allow_actions`, so normally this is invisible. A server someone started by hand refuses `act` unless they passed `pyselector serve --allow-actions`, and you get `action_not_allowed` (exit code 7) even with both opt-ins present. Report that to the user rather than starting or stopping a server yourself.
+
 ## `diff`: Compare Two Snapshots
 
 ```powershell
@@ -201,7 +222,11 @@ Use `act --diff` instead when you are the one causing the change; it takes both 
 
 ## JSON Contract
 
-Every `--json` response carries `schema_version`, `command`, and `status`.
+Every `--json` response carries `schema_version`, `command`, `status`, and `served`.
+
+`schema_version` marks the shape of the output and grows over time. Newer versions only add keys, so read the fields you need rather than comparing `schema_version` for equality.
+
+`served` tells you whether a resident server produced the result. It is `false` for ordinary one-shot execution.
 
 `status` is `"success"` when at least one backend completed, even if nothing matched. A search that finds nothing returns `status: "success"` with an empty `matches` / `windows` array and exit code 1. A failure returns `status: "error"` with an `error` object holding `code`, `exit_code`, and `message`. Distinguish "not found" from "failed" by `status`, not by exit code alone.
 
@@ -233,7 +258,7 @@ For `tree`, read:
 
 - Every command except `act` only reads the UI. `act` is the single command that changes application state, and it stays inert unless both opt-ins above are present.
 - If `act` is not enabled, you cannot open a menu or switch a tab yourself. Ask the user to bring the target screen into view first.
-- Every invocation starts a new process, so handles and coordinates from a previous run are only valid while the screen is unchanged.
+- Every invocation starts a new process, so handles and coordinates from a previous run are only valid while the screen is unchanged. The same applies to a `ref`, which additionally dies with the server that issued it.
 """
 
 

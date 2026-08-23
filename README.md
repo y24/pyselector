@@ -186,9 +186,108 @@ pyselector diff --json before.json after.json
 
 `added` / `removed` / `changed`（属性ごとの before・after）と `summary` を返します。終了コードは、差分があれば 0、完全に同じなら 1 です。`--summary` で取得した出力は比較できません。
 
+### 常駐モード（任意・既定では無効）
+
+`pyselector` は 1 コマンドごとにプロセスを起動するため、Python と pywinauto の import に約 0.55 秒の固定コストがかかります。常駐モードはこれを消し、加えて **要素参照（ref）をコマンドをまたいで使えるようにします**。
+
+**既定では無効です。設定を書かない限り、これまでとまったく同じ動作をします。** 常駐プロセスも生まれません。
+
+有効にするには `pyselector_config.json` に次を書きます。
+
+```json
+{ "server": { "enabled": true } }
+```
+
+これだけで、以降は必要になった時点でサーバーが自動起動し、無操作 300 秒で自ら終了します。**利用者がサーバーを手で起動する必要はありません。** コマンドの書き方も変わりません。
+
+```bash
+pyselector find --json --window-handle 0x2E20F46 --control-type Button
+```
+
+サーバーが動いていなければ、これまでどおりその場で実行されます。
+
+#### ref による対象指定
+
+常駐モードの主目的はこちらです。サーバー経由で実行すると、各要素に `ref` が付きます。
+
+```bash
+pyselector find --json --window-handle 0x2E20F46 --auto-id saveBtn   # → "ref": "uia:7f3a2b:42"
+pyselector act  --json --ref uia:7f3a2b:42 --click --allow-actions
+```
+
+座標も再検索も要らず、`act` の対象が曖昧になる余地が消えます。`--ref` は `inspect` / `tree` / `find` / `act` で使え、`--at` / `--window-handle` / `--window-title` とは排他です。
+
+`ref` が指す要素は画面が変われば無効になります。使うたびに生存確認を行い、失敗した場合は**何も操作せず**終了コード 9（`stale_ref`）で失敗します。サーバーを再起動した後の古い `ref` も同様です。
+
+**`ref` はサーバー経由のときだけ出力されます。** ローカル実行の `ref` はプロセス終了とともに消えるため、出力すると誤解を招くからです。
+
+#### サーバーを経由する条件
+
+| 条件 | 経由するか |
+| --- | --- |
+| `--json` を指定した `inspect` / `tree` / `windows` / `find` / `act` / `diff` / `version` | する |
+| テキスト出力（`--json` なし） | しない。進捗ログが逐次表示されることに意味があるため |
+| オーバーレイやカウントダウンで対象を選ぶ実行 | しない |
+| `serve` / `install-skills` | しない |
+
+`--server` で明示的に切り替えられます。
+
+```text
+--server auto      繋がれば使う。繋がらなければローカル実行（設定で有効化したときの既定）
+--server off       常にローカル実行（設定に関わらず）
+--server require   サーバーが必須。繋がらなければ終了コード 11 で失敗する
+```
+
+`require` は、`ref` を確実に使いたいエージェントのためにあります。`auto` で黙ってローカルに落ちると `ref` が返らないため、その判別手段になります。
+
+#### サーバーの管理
+
+```bash
+pyselector serve                      # フォアグラウンドで起動
+pyselector serve --idle-timeout 600   # 無操作 600 秒で自動終了（既定 300）
+pyselector serve --allow-actions      # このサーバーに act の実行を許す
+pyselector serve --status             # 稼働状況を表示（--json 可）
+pyselector serve --stop               # 停止を要求する
+```
+
+プロセスを自分で管理したい場合は `server.auto_start` を `false` にします。
+
+孤児プロセスを残さないよう、アイドルタイムアウト・`--stop`・状態ファイルの掃除（`--status` は死んだ pid の記録を消します）の 3 つを用意しています。
+
+#### 常駐モードと `act`
+
+`act` の 2 つの関門（設定の `act.allow_actions` と `--allow-actions`）は、常駐モードでもそのまま効きます。設定はサーバーではなく**クライアントのカレントディレクトリ**を基準に、要求ごとに評価されるため、判定はローカル実行と完全に同じです。
+
+これに加えて、サーバー自身が UI を操作できるかどうかという上限があります。「その操作を許すか」ではなく「**このデーモンに UI を触らせるか**」という別の軸の設定です。
+
+```bash
+pyselector serve                    # act を拒否する（読み取り専用のデーモン）
+pyselector serve --allow-actions    # act を許可する
+```
+
+**手動起動は既定で拒否、自動起動は設定に書かれた同意を引き継ぎます。** つまり `act.allow_actions` を `true` にしてあるディレクトリから自動起動されたサーバーは `act` を実行できます。設定で許可した利用者に、さらに手動起動を求めることはありません。
+
+この上限が許可を**広げる**ことはありません。設定は毎回クライアントの cwd で評価されるので、`act` を許していないディレクトリからの要求は、サーバーが許可されていても拒否されます。
+
+`act` を許可していないディレクトリから先にサーバーが自動起動されていると、後から `act` を許可した別のディレクトリで実行しても上限に阻まれます。その場合は次で起動し直してください。
+
+```bash
+pyselector serve --stop
+```
+
+#### 安全性について
+
+通信には名前付きパイプ（`\\.\pipe\pyselector-<SID>`）を使い、ACL を実行ユーザーと SYSTEM に限定しています。認証はカーネルが SID で強制するため、こちら側に漏れて困る秘密情報がありません。TCP ポートは開きません。
+
+**常駐化によってできることは増えません。** 同じユーザーで動く他のプロセスは、パイプに繋がなくても最初から `pyselector` を直接実行できるからです。
+
+#### バージョン不一致
+
+要求にはクライアントの版数が入ります。サーバーと異なる場合、サーバーは実行を拒み、クライアントはローカル実行にフォールバックしたうえで標準エラーにその旨を出します。`pip install -e .` で更新した後に古いサーバーが結果を返し続ける事故を防ぐためです。
+
 ### JSON の共通仕様
 
-`--json` の出力には必ず `schema_version` / `command` / `status` が含まれます。
+`--json` の出力には必ず `schema_version` / `command` / `status` / `served` が含まれます。`served` は、その結果を常駐サーバーが返したかどうかです。
 
 `status` は、いずれかのバックエンドが完走すれば `success` です。**該当なしと失敗は別物**として扱えます。
 
@@ -489,9 +588,18 @@ pyselector tree --window-title "電.*" --title-re --backend uia
   "selector": {
     "evaluation_max_items": 10,
     "found_index_trial_count": 3
+  },
+  "server": {
+    "enabled": false,
+    "auto_start": true,
+    "idle_timeout": 300,
+    "max_refs": 5000,
+    "connect_timeout": 30
   }
 }
 ```
+
+`server.enabled` が `false` の間、クライアントはサーバーを探しにいきません。`auto_start` は `enabled` が `true` のときだけ意味を持ちます。
 
 別の場所の設定ファイルを使う場合は、環境変数 `PYSELECTOR_CONFIG` にパスを指定できます。
 
