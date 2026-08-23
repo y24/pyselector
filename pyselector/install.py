@@ -95,7 +95,7 @@ Response: `cursor_position`, `target_window`, and `backends[]` with `element` (a
 
 ## `act`: drive the UI
 
-`act` is the only command that changes application state, and every `act` needs `--allow-actions`; without it the command fails with `action_not_allowed` (exit 7) and nothing happens. Always resolve the target with `--dry-run` first - it needs no permission and reports exactly which element would be acted on.
+`act` is the only command that changes application state, so it is gated twice: the working directory needs `PYSELECTOR_ALLOW_ACTIONS=true` in its `.env`, **and** each command must pass `--allow-actions`. Either gate missing fails with `action_not_allowed` (exit 7) and nothing happens. Always resolve the target with `--dry-run` first: it skips both gates and reports exactly which element would be acted on.
 
 ```powershell
 pyselector act --json --window-handle 0x2E20F46 --auto-id num5Button --click --dry-run
@@ -112,6 +112,14 @@ Targeting uses the same conditions as `find` and **must be unique**: several mat
 `--diff` reports what the action changed in that window. This is how you reach a screen that is not visible yet: open a menu or switch a tab, read `diff.added`, then `find` inside the new elements.
 
 Rules: prefer `--invoke` over `--click` where it works (UIA invoke pattern, no physical mouse). Re-read state between actions instead of assuming it. Never act on a target you have not resolved with `--dry-run` or `find`. Never dismiss dialogs, confirm prompts, delete data, submit forms, or send anything unless the user asked for that specific step.
+
+### When `act` is refused
+
+`action_not_allowed` (exit 7) has three causes and `error.message` names which one:
+
+- **`.env` not set** - the directory you run from has no `PYSELECTOR_ALLOW_ACTIONS=true` in `.env`. That file is deliberately uncommitted, so a fresh clone always starts here. **Do not create or edit `.env` yourself**, that would be granting yourself control of the desktop: ask the user to add the line `PYSELECTOR_ALLOW_ACTIONS=true` to `.env` in the working directory. Every other command keeps working meanwhile, so use `--dry-run` to have the exact `act` command ready for when they do.
+- **flag missing** - you left off `--allow-actions`. Retry with it.
+- **resident server** - `.env` and the flag are both fine, but the running server was started without action permission. Report that to the user rather than starting or stopping servers yourself.
 
 ## `diff`: compare two snapshots
 
@@ -138,7 +146,6 @@ A `ref` names one exact element, so prefer it over re-running `find` or reusing 
 - A `ref` is valid only while the server that issued it runs. It never appears when `served` is `false`, and you must not invent one.
 - If the screen changed or the server restarted, the command fails with `stale_ref` (exit 9) and **performs no action**; run `find` again for a fresh `ref`.
 - Pass `--server require` when you need refs: otherwise a command may silently fall back to local execution and return none. It fails with `server_unavailable` (exit 11) when no server is reachable.
-- If a server refuses `act` with `action_not_allowed` even though you passed `--allow-actions`, report that to the user rather than starting or stopping a server yourself.
 
 ## JSON contract
 
