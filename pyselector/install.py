@@ -15,28 +15,14 @@ SKILL_LABELS = {
 
 SKILL_CONTENT = """---
 name: pyselector-cli
-description: Use the local pyselector CLI to inspect Windows UI elements and generate AI-readable pywinauto selector candidates in JSON.
+description: Inspect Windows desktop UI elements and generate pywinauto selector candidates as JSON with the local pyselector CLI. Use when finding, verifying, or repairing a selector for a control in a Windows application (button, input, menu item, list row, tab, dialog), exploring a window's UI tree, comparing the win32 and UIA backends, or writing pywinauto automation code. Windows desktop apps only - not web pages or browser DOM.
 ---
 
 # pyselector-cli Skill
 
-Use this skill when a task needs Windows UI inspection, pywinauto selector discovery, UI tree exploration, or automation code that targets desktop application controls.
-
 `pyselector` is a local CLI for inspecting Windows UI elements and generating pywinauto selector candidates.
 
 Always include `--json` when running `pyselector`. The normal text output includes a startup logo and human-oriented sections that are unnecessary for an AI agent and harder to parse.
-
-## When To Use
-
-Use `pyselector` when the user asks to:
-
-- Find a selector for a Windows button, input, menu item, list row, tab, dialog, or other UI element.
-- Inspect a visible UI element in an open Windows application.
-- Explore the UI tree of a known window.
-- Generate or repair pywinauto automation code.
-- Compare win32 and UIA backends for a target application.
-
-Do not use it for web pages, browser DOM inspection, or non-Windows UI targets.
 
 ## Exploration Workflow
 
@@ -63,7 +49,7 @@ pyselector inspect --json --at 636,2240
 
 Each step narrows the search. Do not start from step 5, and do not dump a whole tree when `--summary` or `find` answers the question.
 
-To reach a screen that is not visible yet (a closed menu, another tab), see `act` below. It is disabled by default.
+To reach a screen that is not visible yet (a closed menu, another tab), see `act` below.
 
 ## Common Rules
 
@@ -143,14 +129,9 @@ pyselector inspect --json --handle 0x2E20F46
 
 The screen may have changed since the coordinate was captured. Always check the returned `element.window_text` / `control_type` against what you expected before trusting the result.
 
-## `act`: Drive The UI (opt-in, off by default)
+## `act`: Drive The UI
 
-`act` performs a real action on the real desktop. It is **disabled unless the repository owner enabled it**, and it needs two separate opt-ins:
-
-1. `pyselector_config.json` must contain `{"act": {"allow_actions": true}}`
-2. the command must pass `--allow-actions`
-
-If either is missing the command fails with `action_not_allowed` (exit code 7) and nothing happens. **Do not edit the config file yourself to turn this on.** If a task needs UI actions and the config does not allow them, tell the user and stop.
+`act` performs a real action on the real desktop, so every `act` command must pass `--allow-actions`. Without it the command fails with `action_not_allowed` (exit code 7) and nothing happens.
 
 Always resolve the target with `--dry-run` first. It needs no permission and reports exactly which element would be acted on:
 
@@ -188,7 +169,7 @@ Rules for acting:
 
 ## Resident Mode And Element Refs (optional)
 
-The repository owner may enable a resident server with `{"server": {"enabled": true}}` in `pyselector_config.json`. **Do not edit the config file yourself to turn this on.** When it is enabled, nothing about how you invoke commands changes; the server starts on demand and stops itself when idle.
+A resident server may be running for this repository. Nothing about how you invoke commands changes: it starts on demand and stops itself when idle.
 
 Check whether a response came from the server by reading `served` in the JSON envelope. When `served` is `true`, elements carry a `ref`:
 
@@ -204,8 +185,7 @@ Rules for refs:
 - A `ref` is only valid while the server that issued it is running. It never appears when `served` is `false`, and you must not invent one.
 - If the screen changed or the server restarted, the command fails with `stale_ref` (exit code 9) and **performs no action**. Run `find` again to get a fresh `ref`.
 - When you need refs to be available, pass `--server require`. Without it, a command may silently fall back to local execution and return no `ref` at all. `--server require` fails with `server_unavailable` (exit code 11) when no server is reachable, which is the signal that refs are not available right now.
-- The two `act` opt-ins are unchanged in resident mode. The config is read from **your** working directory on every request, so the decision is identical to local execution.
-- A resident server also carries its own ceiling on whether it may drive the UI at all. A server started on demand inherits the config's `act.allow_actions`, so normally this is invisible. A server someone started by hand refuses `act` unless they passed `pyselector serve --allow-actions`, and you get `action_not_allowed` (exit code 7) even with both opt-ins present. Report that to the user rather than starting or stopping a server yourself.
+- If a server refuses `act` with `action_not_allowed` (exit code 7) even though you passed `--allow-actions`, report that to the user rather than starting or stopping a server yourself.
 
 ## `diff`: Compare Two Snapshots
 
@@ -256,8 +236,7 @@ For `tree`, read:
 
 ## Notes
 
-- Every command except `act` only reads the UI. `act` is the single command that changes application state, and it stays inert unless both opt-ins above are present.
-- If `act` is not enabled, you cannot open a menu or switch a tab yourself. Ask the user to bring the target screen into view first.
+- Every command except `act` only reads the UI. `act` is the single command that changes application state, and it stays inert without `--allow-actions`.
 - Every invocation starts a new process, so handles and coordinates from a previous run are only valid while the screen is unchanged. The same applies to a `ref`, which additionally dies with the server that issued it.
 """
 
