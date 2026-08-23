@@ -102,7 +102,7 @@ def _args(**overrides):
         max_items=200,
         only_visible=True,
         allow_actions=True,
-        config_allow_actions=True,
+        env_allow_actions=True,
         dry_run=False,
         diff=False,
         json=True,
@@ -134,15 +134,15 @@ def test_act_clicks_the_single_matching_element(monkeypatch, capsys):
     assert payload["element_after"]["window_text"] == "押された後"
 
 
-def test_act_requires_the_config_flag(monkeypatch, capsys):
+def test_act_requires_the_env_permission(monkeypatch, capsys):
     inspector = FakeActInspector()
     monkeypatch.setattr(inspect_runner, "_create_inspector", lambda backend: inspector)
 
     with pytest.raises(ActionNotAllowedError) as error:
-        inspect_runner.run_act(_args(auto_id="num5Button", config_allow_actions=False))
+        inspect_runner.run_act(_args(auto_id="num5Button", env_allow_actions=False))
 
     capsys.readouterr()
-    assert "allow_actions" in str(error.value)
+    assert "PYSELECTOR_ALLOW_ACTIONS" in str(error.value)
     assert inspector.actions == []
 
 
@@ -165,7 +165,7 @@ def test_dry_run_resolves_the_target_without_acting(monkeypatch, capsys):
         monkeypatch,
         capsys,
         inspector,
-        _args(auto_id="num5Button", dry_run=True, allow_actions=False, config_allow_actions=False),
+        _args(auto_id="num5Button", dry_run=True, allow_actions=False, env_allow_actions=False),
     )
 
     payload = json.loads(output)

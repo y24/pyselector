@@ -122,12 +122,19 @@ pyselector find --json --at 636,2240 --depth 2
 
 ### `act`（UI 操作 / 既定で無効）
 
-`act` は実際のデスクトップを操作します。他のコマンドと違い、取り消せない変更を起こしうるため、**2 段階の明示的な許可**が必要です。
+`act` は実際のデスクトップを操作します。このコマンドには、**2 段階の明示的な許可**が必要です。
 
-1. `pyselector_config.json` に `{"act": {"allow_actions": true}}` を書く
+1. カレントディレクトリの `.env` に `PYSELECTOR_ALLOW_ACTIONS=true` を書く
 2. 実行時に `--allow-actions` を付ける
 
 どちらか欠けていれば何も実行せず、終了コード 7（`action_not_allowed`）で終わります。
+
+```bash
+# .env（このファイルはリポジトリに含めない）
+PYSELECTOR_ALLOW_ACTIONS=true
+```
+
+`.env` が無い場合はプロセスの環境変数 `PYSELECTOR_ALLOW_ACTIONS` を見ます。両方にある場合は `.env` の値を採用します。`true` / `1` / `yes` / `on` が許可、`false` / `0` / `no` / `off` が拒否で、それ以外の値はエラーになります。
 
 ```bash
 # まず --dry-run で対象を確認する（許可は不要）
@@ -256,7 +263,7 @@ pyselector serve --stop               # 停止を要求する
 
 #### 常駐モードと `act`
 
-`act` の 2 つの関門（設定の `act.allow_actions` と `--allow-actions`）は、常駐モードでもそのまま効きます。設定はサーバーではなく**クライアントのカレントディレクトリ**を基準に、要求ごとに評価されるため、判定はローカル実行と完全に同じです。
+`act` の 2 つの関門（`.env` の `PYSELECTOR_ALLOW_ACTIONS` と `--allow-actions`）は、常駐モードでもそのまま効きます。`.env` はサーバーではなく**クライアントのカレントディレクトリ**を基準に、要求ごとに評価されるため、判定はローカル実行と完全に同じです。
 
 これに加えて、サーバー自身が UI を操作できるかどうかという上限があります。「その操作を許すか」ではなく「**このデーモンに UI を触らせるか**」という別の軸の設定です。
 
@@ -265,9 +272,7 @@ pyselector serve                    # act を拒否する（読み取り専用�
 pyselector serve --allow-actions    # act を許可する
 ```
 
-**手動起動は既定で拒否、自動起動は設定に書かれた同意を引き継ぎます。** つまり `act.allow_actions` を `true` にしてあるディレクトリから自動起動されたサーバーは `act` を実行できます。設定で許可した利用者に、さらに手動起動を求めることはありません。
-
-この上限が許可を**広げる**ことはありません。設定は毎回クライアントの cwd で評価されるので、`act` を許していないディレクトリからの要求は、サーバーが許可されていても拒否されます。
+**手動起動は既定で拒否、自動起動は `.env` に書かれた同意を引き継ぎます。** つまり `PYSELECTOR_ALLOW_ACTIONS=true` を書いたディレクトリから自動起動されたサーバーは `act` を実行できます。
 
 `act` を許可していないディレクトリから先にサーバーが自動起動されていると、後から `act` を許可した別のディレクトリで実行しても上限に阻まれます。その場合は次で起動し直してください。
 
@@ -579,7 +584,6 @@ pyselector tree --window-title "電.*" --title-re --backend uia
     "only_visible": true
   },
   "act": {
-    "allow_actions": false,
     "backend": "uia",
     "depth": 8,
     "max_items": 200,

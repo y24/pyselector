@@ -302,9 +302,8 @@ def test_a_stale_ref_reports_its_own_exit_code(capsys):
 
 def test_act_does_not_touch_anything_when_the_ref_is_stale(monkeypatch, tmp_path, capsys):
     """失効した ref では、操作の前に止まる（設計 7.4）。"""
-    config = tmp_path / "pyselector_config.json"
-    config.write_text(json.dumps({"act": {"allow_actions": True}}), encoding="utf-8")
-    monkeypatch.setenv("PYSELECTOR_CONFIG", str(config))
+    (tmp_path / ".env").write_text("PYSELECTOR_ALLOW_ACTIONS=true\n", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
     performed = []
     monkeypatch.setattr(
         "pyselector.actions.perform_action",

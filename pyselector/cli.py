@@ -176,7 +176,7 @@ def main(argv: list[str] | None = None) -> int:
             _validate_act_target(args, parser)
             _resolve_act_action(args, parser)
             args.only_visible = _resolve_only_visible(args.only_visible, args.include_hidden, config.act.only_visible)
-            args.config_allow_actions = config.act.allow_actions
+            args.env_allow_actions = config.act.allow_actions
             return run_act(args)
         if args.command == "tree":
             _validate_visible_options(args, parser)

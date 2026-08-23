@@ -281,7 +281,7 @@ def test_act_defaults_come_from_config(monkeypatch):
     assert args.allow_actions is False
     assert args.dry_run is False
     assert args.diff is False
-    assert args.config_allow_actions is False
+    assert args.env_allow_actions is False
 
 
 def test_act_backend_does_not_accept_both(capsys):
@@ -291,16 +291,15 @@ def test_act_backend_does_not_accept_both(capsys):
     assert "invalid choice: 'both'" in capsys.readouterr().err
 
 
-def test_act_passes_the_config_permission_through(monkeypatch, tmp_path):
-    config_path = tmp_path / "pyselector_config.json"
-    config_path.write_text('{"act": {"allow_actions": true}}', encoding="utf-8")
-    monkeypatch.setenv("PYSELECTOR_CONFIG", str(config_path))
+def test_act_passes_the_env_permission_through(monkeypatch, tmp_path):
+    (tmp_path / ".env").write_text("PYSELECTOR_ALLOW_ACTIONS=true\n", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
     captured = _capture(monkeypatch, "run_act")
 
     result = cli.main(["act", "--window-handle", "0x10", "--auto-id", "a", "--click", "--allow-actions"])
 
     assert result == 0
-    assert captured["args"].config_allow_actions is True
+    assert captured["args"].env_allow_actions is True
     assert captured["args"].allow_actions is True
 
 

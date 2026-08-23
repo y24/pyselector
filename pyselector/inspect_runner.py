@@ -534,14 +534,13 @@ def run_act(args: Namespace) -> int:
 def _ensure_actions_allowed(args: Namespace) -> None:
     """UI 操作を実行してよいかを確かめる。
 
-    本質的な関門から順に見る。設定とコマンドのフラグが「この操作を許すか」を決め、
+    本質的な関門から順に見る。.env とコマンドのフラグが「この操作を許すか」を決め、
     常駐サーバーの上限は「このデーモンに UI を触らせるか」という別の軸なので最後に見る。
-    順序を逆にすると、設定を書いていないだけの利用者に的外れな理由を返してしまう。
+    順序を逆にすると、.env を書いていないだけの利用者に的外れな理由を返してしまう。
     """
-    if not getattr(args, "config_allow_actions", False):
+    if not getattr(args, "env_allow_actions", False):
         raise ActionNotAllowedError(
-            "UI 操作は既定で無効です。pyselector_config.json に "
-            '{"act": {"allow_actions": true}} を設定してください'
+            "UI 操作は既定で無効です。.env に PYSELECTOR_ALLOW_ACTIONS=true を書いてください"
         )
     if not getattr(args, "allow_actions", False):
         raise ActionNotAllowedError("UI 操作には --allow-actions の指定が必要です")

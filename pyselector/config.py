@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import json
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
+from pyselector.env import ALLOW_ACTIONS_VAR, ENV_FILE_NAME, load_allow_actions
 from pyselector.utils.errors import ArgumentError
 
 
@@ -53,7 +54,8 @@ class FindConfig:
 
 @dataclass(frozen=True)
 class ActConfig:
-    # UI 操作は既定で無効。設定と --allow-actions の両方で明示的に有効化する。
+    # UI 操作は既定で無効。この値だけは設定ファイルではなく .env から読む（pyselector.env）。
+    # 実行にはこの許可と --allow-actions の両方が必要。
     allow_actions: bool = False
     backend: str = "uia"
     depth: int = 8
@@ -97,7 +99,7 @@ class AppConfig:
 def load_config() -> AppConfig:
     path = _resolve_config_path()
     if path is None:
-        return AppConfig()
+        return _with_env_permissions(AppConfig())
     try:
         with path.open("r", encoding="utf-8") as file:
             raw = json.load(file)
@@ -107,7 +109,12 @@ def load_config() -> AppConfig:
         raise ArgumentError(f"cannot read config file: {path}: {exc}") from exc
     if not isinstance(raw, dict):
         raise ArgumentError(f"config root must be an object: {path}")
-    return _build_config(raw, path)
+    return _with_env_permissions(_build_config(raw, path))
+
+
+def _with_env_permissions(config: AppConfig) -> AppConfig:
+    """UI 操作の許可だけは設定ファイルではなく .env から読む。"""
+    return replace(config, act=replace(config.act, allow_actions=load_allow_actions()))
 
 
 def _resolve_config_path() -> Path | None:
@@ -160,7 +167,6 @@ def _build_config(raw: dict[str, Any], path: Path) -> AppConfig:
             only_visible=_bool(find, "only_visible", True, path),
         ),
         act=ActConfig(
-            allow_actions=_bool(act, "allow_actions", False, path),
             backend=_choice(act, "backend", "uia", {"win32", "uia"}, path),
             depth=_non_negative_int(act, "depth", 8, path),
             max_items=_positive_int(act, "max_items", 200, path),
@@ -194,7 +200,12 @@ def _section(raw: dict[str, Any], key: str, path: Path) -> dict[str, Any]:
     elif key == "find":
         allowed = {"backend", "scope", "timeout", "depth", "max_items", "limit", "selector_limit", "only_visible"}
     elif key == "act":
-        allowed = {"allow_actions", "backend", "depth", "max_items", "only_visible"}
+        if "allow_actions" in value:
+            raise ArgumentError(
+                "act.allow_actions has moved out of the config file: "
+                f"write {ALLOW_ACTIONS_VAR}=true in {ENV_FILE_NAME} instead: {path}"
+            )
+        allowed = {"backend", "depth", "max_items", "only_visible"}
     elif key == "server":
         allowed = {"enabled", "auto_start", "idle_timeout", "max_refs", "connect_timeout"}
     else:

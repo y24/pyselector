@@ -43,6 +43,11 @@ def _config_file(tmp_path, monkeypatch, payload):
     return path
 
 
+def _env_file(tmp_path, monkeypatch, value):
+    (tmp_path / ".env").write_text(f"PYSELECTOR_ALLOW_ACTIONS={value}\n", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+
+
 def _spy_client(monkeypatch, response):
     """ServerClient を差し替えて、送られた要求を記録する。"""
     sent = []
@@ -279,9 +284,10 @@ def test_auto_start_happens_once_the_connection_fails(monkeypatch, tmp_path, nev
     assert len(calls) == 1
 
 
-def test_auto_start_inherits_the_act_consent_from_the_config(monkeypatch, tmp_path, never_really_start_a_server):
-    """設定で act を許した利用者に、更に手動起動まで求めない。"""
-    _config_file(tmp_path, monkeypatch, {"server": {"enabled": True}, "act": {"allow_actions": True}})
+def test_auto_start_inherits_the_act_consent_from_the_env(monkeypatch, tmp_path, never_really_start_a_server):
+    """.env で act を許した利用者に、更に手動起動まで求めない。"""
+    _config_file(tmp_path, monkeypatch, {"server": {"enabled": True}})
+    _env_file(tmp_path, monkeypatch, "true")
     _spy_client(monkeypatch, None)
     _stub_runner(monkeypatch)
 
@@ -290,8 +296,9 @@ def test_auto_start_inherits_the_act_consent_from_the_config(monkeypatch, tmp_pa
     assert never_really_start_a_server[0]["allow_actions"] is True
 
 
-def test_auto_start_does_not_grant_act_the_config_withholds(monkeypatch, tmp_path, never_really_start_a_server):
-    _config_file(tmp_path, monkeypatch, {"server": {"enabled": True}, "act": {"allow_actions": False}})
+def test_auto_start_does_not_grant_act_the_env_withholds(monkeypatch, tmp_path, never_really_start_a_server):
+    _config_file(tmp_path, monkeypatch, {"server": {"enabled": True}})
+    _env_file(tmp_path, monkeypatch, "false")
     _spy_client(monkeypatch, None)
     _stub_runner(monkeypatch)
 
