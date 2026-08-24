@@ -9,7 +9,7 @@ PROTOCOL_VERSION = 1
 
 #: サーバーで実行してよいコマンド（設計 8.3 の許可リスト）。
 #: ``serve`` は再帰を防ぐため、``install-skills`` はファイルを書き出すため除く。
-SERVER_COMMANDS = frozenset({"inspect", "tree", "windows", "find", "act", "diff", "version"})
+SERVER_COMMANDS = frozenset({"inspect", "tree", "windows", "find", "expect", "act", "diff", "version"})
 
 #: サーバーが要求そのものを拒んだときの理由。いずれもクライアント側で
 #: ローカル実行にフォールバックする。

@@ -13,6 +13,9 @@ EXIT_ACTION_FAILED = 8
 EXIT_STALE_REF = 9
 EXIT_ARGUMENT_ERROR = 10
 EXIT_SERVER_UNAVAILABLE = 11
+#: expect の判定が成立しなかった。判定そのものは正常に実行できている。
+#: 「判定が動かなかった」（status=error）とは別物として扱う（設計 11 §6.3）。
+EXIT_EXPECTATION_FAILED = 12
 EXIT_UNEXPECTED = 100
 EXIT_INTERRUPTED = 130
 

@@ -90,6 +90,70 @@ def element_from_wrapper(
     )
 
 
+#: UIA / win32 いずれも「不定」を表す 3 値トグルの値。
+TOGGLE_INDETERMINATE = 2
+
+
+def read_state_values(wrapper: Any, backend: str) -> dict[str, Any]:
+    """wrapper から状態属性だけを読む。読めなかったものは None のままにする。"""
+    return {
+        "value": _read_value(wrapper) if backend == "uia" else None,
+        "is_checked": _read_checked(wrapper, backend),
+        "is_selected": _read_bool(wrapper, "is_selected"),
+        "is_offscreen": _read_offscreen(wrapper) if backend == "uia" else None,
+        "has_keyboard_focus": _read_bool(wrapper, "has_keyboard_focus"),
+    }
+
+
+def _read_value(wrapper: Any) -> str | None:
+    """UIA の ValuePattern から値を読む。
+
+    win32 では読まない。win32 の「値」は表示テキストと区別が付かず、値が空欄でも
+    ラベルの文字列が返ってしまう。それを value として出すと、誤って通る
+    アサーションを誘発する（設計 11 §5.2）。
+    """
+    value = safe_call(wrapper, "get_value")
+    if value is None:
+        legacy = safe_call(wrapper, "legacy_properties")
+        if isinstance(legacy, dict):
+            value = legacy.get("Value")
+    if value is None:
+        return None
+    return value if isinstance(value, str) else str(value)
+
+
+def _read_checked(wrapper: Any, backend: str) -> bool | None:
+    """3 値トグルを bool に落とす。「不定」は None のままにする。
+
+    indeterminate を False として報告すると、チェックが外れていることを
+    確かめたテストが誤って通る。ここは情報を落とさない。
+    """
+    getter = "get_toggle_state" if backend == "uia" else "get_check_state"
+    state = safe_call(wrapper, getter)
+    if state is None or isinstance(state, bool):
+        return state
+    try:
+        state = int(state)
+    except (TypeError, ValueError):
+        return None
+    if state == TOGGLE_INDETERMINATE:
+        return None
+    return state == 1
+
+
+def _read_bool(wrapper: Any, name: str) -> bool | None:
+    value = safe_call(wrapper, name)
+    return None if value is None else bool(value)
+
+
+def _read_offscreen(wrapper: Any) -> bool | None:
+    element = getattr(getattr(wrapper, "element_info", None), "element", None)
+    if element is None:
+        return None
+    value = safe_call(element, "CurrentIsOffscreen")
+    return None if value is None else bool(value)
+
+
 #: 常駐していないときの参照表に付ける印。ref はプロセス終了とともに消えるため
 #: 外には出さないが、形式は常駐時と揃えておく。
 LOCAL_INSTANCE_ID = "local"
@@ -448,6 +512,21 @@ class PywinautoInspectorMixin:
             include_children_count=False,
             include_process_name=False,
         )
+
+    def read_element_state(self, element: ElementInfo) -> ElementInfo:
+        """要素の状態（値・チェック・選択・フォーカス）を読んで埋めた要素を返す。
+
+        走査では読まない。1 要素あたり UIA のパターン呼び出しが数回走るため、
+        200 件を超える走査で読むと探索そのものが目に見えて遅くなる（設計 11 §3.2）。
+        出力対象が確定してから、必要な要素にだけ呼ぶこと。
+        """
+        try:
+            wrapper = self._wrapper_for(element)
+        except ElementNotFoundError:
+            # 状態が読めないことは失敗ではない。読めた分だけを返す方針に合わせ、
+            # 元の要素をそのまま返す。
+            return element
+        return replace(element, **read_state_values(wrapper, self.backend_name))
 
     def list_windows(self, only_visible: bool = True) -> list[ElementInfo]:
         try:

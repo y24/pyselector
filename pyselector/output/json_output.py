@@ -6,6 +6,7 @@ from collections import Counter
 from pyselector.model.act_result import ActResult
 from pyselector.model.diff_result import BackendDiff
 from pyselector.model.element_info import ElementInfo
+from pyselector.model.expect_result import ExpectResult
 from pyselector.model.find_result import FindMatch, FindResult
 from pyselector.model.hierarchy import HierarchyNode
 from pyselector.model.inspection_result import BackendInspection, InspectionResult, TreeResult
@@ -55,12 +56,43 @@ def format_windows_results_json(results: list[WindowsResult], compact: bool = Fa
     )
 
 
-def format_find_results_json(results: list[FindResult], compact: bool = False) -> str:
+def format_find_results_json(
+    results: list[FindResult],
+    compact: bool = False,
+    with_state: bool = False,
+) -> str:
     return _dump(
         _envelope(
             "find",
             _overall_status(results),
-            {"results": [_find_result_to_dict(result, compact) for result in results]},
+            {"results": [_find_result_to_dict(result, compact, with_state) for result in results]},
+        )
+    )
+
+
+def format_expect_result_json(result: ExpectResult, compact: bool = False) -> str:
+    """判定の結果を返す。
+
+    satisfied は「判定が成立したか」、status は「判定を実行できたか」であり、
+    別の軸である。0 件と失敗を分けるのと同じ考え方（設計 11 §6.3）。
+    """
+    return _dump(
+        _envelope(
+            "expect",
+            result.status,
+            {
+                "satisfied": result.satisfied,
+                "expectation": {
+                    "kind": result.expectation.kind,
+                    "expected": result.expectation.expected,
+                    "actual": result.expectation.actual,
+                },
+                "matched": result.matched,
+                "message": result.message,
+                "results": [
+                    _find_result_to_dict(item, compact, with_state=True) for item in result.results
+                ],
+            },
         )
     )
 
@@ -76,8 +108,8 @@ def format_act_result_json(result: ActResult) -> str:
         "backend": result.backend,
         "target_window": _target_window_to_dict(result.target_window),
         "point": {"x": point[0], "y": point[1]} if point is not None else None,
-        "target": _element_to_dict(result.target),
-        "element_after": _element_to_dict(result.element_after),
+        "target": _element_to_dict(result.target, with_state=True),
+        "element_after": _element_to_dict(result.element_after, with_state=True),
     }
     if result.diff is not None:
         payload["diff"] = _backend_diff_to_dict(result.diff)
@@ -164,7 +196,7 @@ def _backend_inspection_to_dict(inspection: BackendInspection) -> dict[str, obje
         "status": inspection.status,
         "message": inspection.message,
         "target_window": _target_window_to_dict(inspection.target_window),
-        "element": _element_to_dict(inspection.element),
+        "element": _element_to_dict(inspection.element, with_state=True),
         "hierarchy": [hierarchy_node_to_dict(node) for node in inspection.hierarchy],
         "selector_candidates": [_selector_evaluation_to_dict(evaluation) for evaluation in inspection.evaluations],
         "code_snippet": inspection.code_snippet,
@@ -228,7 +260,11 @@ def _window_summary_to_dict(window: WindowSummary, compact: bool = False) -> dic
     }
 
 
-def _find_result_to_dict(result: FindResult, compact: bool = False) -> dict[str, object]:
+def _find_result_to_dict(
+    result: FindResult,
+    compact: bool = False,
+    with_state: bool = False,
+) -> dict[str, object]:
     return {
         "backend": result.backend,
         "status": result.status,
@@ -238,17 +274,21 @@ def _find_result_to_dict(result: FindResult, compact: bool = False) -> dict[str,
         "total_matched": result.total_matched,
         "reached_limit": result.reached_limit,
         "truncated": result.truncated,
-        "matches": [_find_match_to_dict(match, compact) for match in result.matches],
+        "matches": [_find_match_to_dict(match, compact, with_state) for match in result.matches],
     }
 
 
-def _find_match_to_dict(match: FindMatch, compact: bool = False) -> dict[str, object]:
+def _find_match_to_dict(
+    match: FindMatch,
+    compact: bool = False,
+    with_state: bool = False,
+) -> dict[str, object]:
     point = match.point
     payload: dict[str, object] = {
         "point": {"x": point[0], "y": point[1]} if point is not None else None,
         "depth": match.element.depth,
         "handle": match.element.handle,
-        "element": _element_to_dict(match.element, compact),
+        "element": _element_to_dict(match.element, compact, with_state),
     }
     if match.inspection is not None:
         payload["inspection"] = _backend_inspection_to_dict(match.inspection)
@@ -268,7 +308,11 @@ def _target_window_to_dict(target_window: TargetWindowInfo | None) -> dict[str, 
     }
 
 
-def _element_to_dict(element: ElementInfo | None, compact: bool = False) -> dict[str, object] | None:
+def _element_to_dict(
+    element: ElementInfo | None,
+    compact: bool = False,
+    with_state: bool = False,
+) -> dict[str, object] | None:
     if element is None:
         return None
     if compact:
@@ -279,7 +323,7 @@ def _element_to_dict(element: ElementInfo | None, compact: bool = False) -> dict
             "class_name": element.class_name,
         }
         return _with_ref(payload, element)
-    return _with_ref({
+    payload = {
         "backend": element.backend,
         "window_text": element.window_text,
         "control_type": element.control_type,
@@ -295,7 +339,22 @@ def _element_to_dict(element: ElementInfo | None, compact: bool = False) -> dict
         "handle": element.handle,
         "process_id": element.process_id,
         "process_name": element.process_name,
-    }, element)
+    }
+    if with_state:
+        # state を読んだときだけ現れる。読んでいないのに null が並ぶと、
+        # 「取得できなかった」と「読んでいない」が区別できなくなる。
+        payload["state"] = _element_state_to_dict(element)
+    return _with_ref(payload, element)
+
+
+def _element_state_to_dict(element: ElementInfo) -> dict[str, object]:
+    return {
+        "value": element.value,
+        "is_checked": element.is_checked,
+        "is_selected": element.is_selected,
+        "is_offscreen": element.is_offscreen,
+        "has_keyboard_focus": element.has_keyboard_focus,
+    }
 
 
 def _with_ref(payload: dict[str, object], element: ElementInfo) -> dict[str, object]:

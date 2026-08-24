@@ -56,6 +56,10 @@ class BackendInspector(ABC):
         raise NotImplementedError
 
     @abstractmethod
+    def read_element_state(self, element: ElementInfo) -> ElementInfo:
+        raise NotImplementedError
+
+    @abstractmethod
     def walk_tree(
         self,
         root: ElementInfo,

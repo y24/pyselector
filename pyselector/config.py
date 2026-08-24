@@ -53,6 +53,17 @@ class FindConfig:
 
 
 @dataclass(frozen=True)
+class ExpectConfig:
+    # 判定はひとつのバックエンドで下す（cli の --backend も win32/uia のみ）。
+    backend: str = "uia"
+    scope: str = "window"
+    depth: int = 8
+    max_items: int = 200
+    limit: int = 20
+    only_visible: bool = True
+
+
+@dataclass(frozen=True)
 class ActConfig:
     # UI 操作は既定で無効。この値だけは設定ファイルではなく .env から読む（pyselector.env）。
     # 実行にはこの許可と --allow-actions の両方が必要。
@@ -90,6 +101,7 @@ class AppConfig:
     tree: TreeConfig = TreeConfig()
     windows: WindowsConfig = WindowsConfig()
     find: FindConfig = FindConfig()
+    expect: ExpectConfig = ExpectConfig()
     act: ActConfig = ActConfig()
     selector: SelectorConfig = SelectorConfig()
     server: ServerConfig = ServerConfig()
@@ -126,12 +138,13 @@ def _resolve_config_path() -> Path | None:
 
 
 def _build_config(raw: dict[str, Any], path: Path) -> AppConfig:
-    allowed_sections = {"inspect", "tree", "windows", "find", "act", "selector", "server"}
+    allowed_sections = {"inspect", "tree", "windows", "find", "expect", "act", "selector", "server"}
     _reject_unknown_keys(raw, allowed_sections, "config", path)
     inspect = _section(raw, "inspect", path)
     tree = _section(raw, "tree", path)
     windows = _section(raw, "windows", path)
     find = _section(raw, "find", path)
+    expect = _section(raw, "expect", path)
     act = _section(raw, "act", path)
     selector = _section(raw, "selector", path)
     server = _section(raw, "server", path)
@@ -166,6 +179,14 @@ def _build_config(raw: dict[str, Any], path: Path) -> AppConfig:
             selector_limit=_positive_int(find, "selector_limit", 3, path),
             only_visible=_bool(find, "only_visible", True, path),
         ),
+        expect=ExpectConfig(
+            backend=_choice(expect, "backend", "uia", {"win32", "uia"}, path),
+            scope=_choice(expect, "scope", "window", {"window", "desktop"}, path),
+            depth=_non_negative_int(expect, "depth", 8, path),
+            max_items=_positive_int(expect, "max_items", 200, path),
+            limit=_positive_int(expect, "limit", 20, path),
+            only_visible=_bool(expect, "only_visible", True, path),
+        ),
         act=ActConfig(
             backend=_choice(act, "backend", "uia", {"win32", "uia"}, path),
             depth=_non_negative_int(act, "depth", 8, path),
@@ -199,6 +220,8 @@ def _section(raw: dict[str, Any], key: str, path: Path) -> dict[str, Any]:
         allowed = {"backend", "max_items", "only_visible"}
     elif key == "find":
         allowed = {"backend", "scope", "timeout", "depth", "max_items", "limit", "selector_limit", "only_visible"}
+    elif key == "expect":
+        allowed = {"backend", "scope", "depth", "max_items", "limit", "only_visible"}
     elif key == "act":
         if "allow_actions" in value:
             raise ArgumentError(

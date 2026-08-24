@@ -8,7 +8,15 @@ from pathlib import Path
 from pyselector import __version__
 from pyselector.config import AppConfig, load_config
 from pyselector.install import SKILL_LABELS, install_skill
-from pyselector.inspect_runner import run_act, run_diff, run_find, run_inspect, run_tree, run_windows
+from pyselector.inspect_runner import (
+    run_act,
+    run_diff,
+    run_expect,
+    run_find,
+    run_inspect,
+    run_tree,
+    run_windows,
+)
 from pyselector.output.json_output import format_error_json, format_version_json
 from pyselector.utils.errors import (
     EXIT_ARGUMENT_ERROR,
@@ -87,6 +95,9 @@ def build_parser(config: AppConfig | None = None) -> argparse.ArgumentParser:
 
     act = subparsers.add_parser("act", help="Perform a UI action on a single element (disabled by default)")
     _add_act_options(act, config)
+
+    expect = subparsers.add_parser("expect", help="Check a condition about the UI and report whether it holds")
+    _add_expect_options(expect, config)
 
     diff = subparsers.add_parser("diff", help="Compare two tree --json outputs")
     diff.add_argument("before", type=Path, help="tree --json output taken before")
@@ -195,6 +206,12 @@ def main(argv: list[str] | None = None) -> int:
             args.selector_evaluation_max_items = config.selector.evaluation_max_items
             args.found_index_trial_count = config.selector.found_index_trial_count
             return run_find(args)
+        if args.command == "expect":
+            _validate_visible_options(args, parser)
+            _validate_find_target(args, parser, command="expect")
+            _resolve_expectation(args, parser)
+            args.only_visible = _resolve_only_visible(args.only_visible, args.include_hidden, config.expect.only_visible)
+            return run_expect(args)
         _validate_visible_options(args, parser)
         _validate_inspect_target(args, parser)
         args.only_visible = _resolve_only_visible(args.only_visible, args.include_hidden, config.inspect.only_visible)
@@ -361,7 +378,8 @@ def _add_windows_options(parser: argparse.ArgumentParser, config: AppConfig) -> 
     parser.add_argument("--json", action="store_true")
 
 
-def _add_find_options(parser: argparse.ArgumentParser, config: AppConfig) -> None:
+def _add_search_condition_options(parser: argparse.ArgumentParser) -> None:
+    """探索の起点と絞り込み条件。find / expect が共有する。"""
     parser.add_argument("--window-title", help="Search inside the window matched by title")
     parser.add_argument("--window-handle", type=_handle, help="Search inside the window with this handle")
     parser.add_argument("--at", type=_point, default=None, metavar="X,Y", help="Search below the element at this coordinate")
@@ -373,6 +391,10 @@ def _add_find_options(parser: argparse.ArgumentParser, config: AppConfig) -> Non
     parser.add_argument("--control-type", help="Match control_type (case-insensitive)")
     parser.add_argument("--class-name", help="Match class_name exactly")
     parser.add_argument("--enabled-only", action="store_true", help="Keep only enabled elements")
+
+
+def _add_find_options(parser: argparse.ArgumentParser, config: AppConfig) -> None:
+    _add_search_condition_options(parser)
     parser.add_argument("--backend", choices=["win32", "uia", "both"], default=config.find.backend)
     parser.add_argument("--scope", choices=["window", "desktop"], default=config.find.scope)
     parser.add_argument("--depth", type=_non_negative_int, default=config.find.depth)
@@ -381,6 +403,11 @@ def _add_find_options(parser: argparse.ArgumentParser, config: AppConfig) -> Non
     parser.add_argument("--timeout", type=_positive_int, default=config.find.timeout)
     parser.add_argument("--with-selectors", action="store_true", help="Generate selector candidates for the matches")
     parser.add_argument("--selector-limit", type=_positive_int, default=config.find.selector_limit)
+    parser.add_argument(
+        "--with-state",
+        action="store_true",
+        help="Read value / checked / selected state for the matches (costs one UIA call per element)",
+    )
     parser.add_argument("--only-visible", action="store_true", default=None)
     parser.add_argument("--include-hidden", action="store_true")
     parser.add_argument("--detail", action="store_true")
@@ -420,6 +447,54 @@ def _add_act_options(parser: argparse.ArgumentParser, config: AppConfig) -> None
     parser.add_argument("--only-visible", action="store_true", default=None)
     parser.add_argument("--include-hidden", action="store_true")
     parser.add_argument("--json", action="store_true")
+
+
+def _add_expect_options(parser: argparse.ArgumentParser, config: AppConfig) -> None:
+    _add_search_condition_options(parser)
+    parser.add_argument("--index", type=_non_negative_int, help="Pick this match when several elements match")
+    # 判定はひとつのバックエンドで下す。both を許すと「どちらで満たされたのか」が
+    # 曖昧になり、検証の意味が薄れる。act と同じ方針。
+    parser.add_argument("--backend", choices=["win32", "uia"], default=config.expect.backend)
+    parser.add_argument("--scope", choices=["window", "desktop"], default=config.expect.scope)
+    parser.add_argument("--depth", type=_non_negative_int, default=config.expect.depth)
+    parser.add_argument("--max-items", type=_positive_int, default=config.expect.max_items)
+    parser.add_argument("--limit", type=_positive_int, default=config.expect.limit)
+    parser.add_argument("--only-visible", action="store_true", default=None)
+    parser.add_argument("--include-hidden", action="store_true")
+    parser.add_argument("--compact", action="store_true", help="Reduce fields per element")
+    parser.add_argument("--json", action="store_true")
+
+    checks = parser.add_argument_group("expectations")
+    checks.add_argument("--exists", dest="expectation", action="store_const", const="exists")
+    checks.add_argument("--not-exists", dest="expectation", action="store_const", const="not_exists")
+    checks.add_argument("--count", type=_non_negative_int, metavar="N", help="Expect exactly N matches")
+    checks.add_argument("--value-equals", metavar="TEXT", help="Expect the element value to equal TEXT")
+    checks.add_argument("--value-contains", metavar="TEXT", help="Expect the element value to contain TEXT")
+    checks.add_argument("--checked", dest="expectation", action="store_const", const="checked")
+    checks.add_argument("--unchecked", dest="expectation", action="store_const", const="unchecked")
+    checks.add_argument("--enabled", dest="expectation", action="store_const", const="enabled")
+    checks.add_argument("--disabled", dest="expectation", action="store_const", const="disabled")
+
+
+#: 値を伴う判定。CLI 上の引数名と、内部の判定種別の対応。
+_VALUED_EXPECTATIONS = (("count", "count"), ("value_equals", "value_equals"), ("value_contains", "value_contains"))
+
+
+def _resolve_expectation(args: argparse.Namespace, parser: argparse.ArgumentParser) -> None:
+    """判定をちょうど 1 つに確定させる。act の操作指定と同じ形にする。"""
+    chosen = [kind for name, kind in _VALUED_EXPECTATIONS if getattr(args, name) is not None]
+    expected = [getattr(args, name) for name, _ in _VALUED_EXPECTATIONS if getattr(args, name) is not None]
+    if args.expectation is not None:
+        chosen.append(args.expectation)
+        expected.append(None)
+    if len(chosen) != 1:
+        parser.error(
+            "expect requires exactly one expectation "
+            "(--exists, --not-exists, --count, --value-equals, --value-contains, "
+            "--checked, --unchecked, --enabled or --disabled)"
+        )
+    args.expectation = chosen[0]
+    args.expected = expected[0]
 
 
 def _resolve_act_action(args: argparse.Namespace, parser: argparse.ArgumentParser) -> None:
@@ -473,7 +548,11 @@ def _validate_tree_target(args: argparse.Namespace, parser: argparse.ArgumentPar
         parser.error("tree requires exactly one of --cursor, --ref, --window-title or --window-handle")
 
 
-def _validate_find_target(args: argparse.Namespace, parser: argparse.ArgumentParser) -> None:
+def _validate_find_target(
+    args: argparse.Namespace,
+    parser: argparse.ArgumentParser,
+    command: str = "find",
+) -> None:
     targets = [
         args.at is not None,
         args.window_title is not None,
@@ -481,7 +560,7 @@ def _validate_find_target(args: argparse.Namespace, parser: argparse.ArgumentPar
         args.ref is not None,
     ]
     if sum(1 for target in targets if target) != 1:
-        parser.error("find requires exactly one of --at, --ref, --window-title or --window-handle")
+        parser.error(f"{command} requires exactly one of --at, --ref, --window-title or --window-handle")
 
 
 def _resolve_only_visible(only_visible_arg: bool | None, include_hidden: bool, config_default: bool) -> bool:

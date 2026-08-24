@@ -23,3 +23,18 @@ class ElementInfo:
     process_id: int | None = None
     process_name: str | None = None
     ref: str | None = None
+    # 以下は要素の「状態」。走査時には読まず、出力対象が確定してから
+    # read_element_state() で埋める（設計 11 §3.2）。取得できなければ None。
+    value: str | None = None
+    is_checked: bool | None = None
+    is_selected: bool | None = None
+    is_offscreen: bool | None = None
+    has_keyboard_focus: bool | None = None
+
+    @property
+    def has_state(self) -> bool:
+        """状態属性が 1 つでも取得できているか。"""
+        return any(
+            getattr(self, name) is not None
+            for name in ("value", "is_checked", "is_selected", "is_offscreen", "has_keyboard_focus")
+        )

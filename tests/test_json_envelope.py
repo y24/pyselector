@@ -70,7 +70,9 @@ def test_inspect_json_keeps_the_existing_keys():
         "selector_candidates",
         "code_snippet",
     }
-    assert set(backend["element"]) == {
+    # 既存キーが消えていないことを見る。スキーマはキーの追加のみで進むため、
+    # 完全一致ではなく包含で確かめる（inspect には後から state が加わった）。
+    assert set(backend["element"]) >= {
         "backend",
         "window_text",
         "control_type",

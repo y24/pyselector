@@ -5,6 +5,7 @@ from collections import Counter
 from pyselector.model.act_result import ActResult
 from pyselector.model.diff_result import BackendDiff
 from pyselector.model.element_info import ElementInfo
+from pyselector.model.expect_result import ExpectResult
 from pyselector.model.find_result import FindMatch, FindResult
 from pyselector.model.hierarchy import HierarchyNode
 from pyselector.model.inspection_result import BackendInspection, InspectionResult, TreeResult
@@ -75,7 +76,17 @@ def format_backend_element(inspection: BackendInspection, color: bool = False) -
         ("is_enabled", element.is_enabled),
         ("handle", format_handle(element.handle)),
     ]
+    fields.extend(format_state_fields(element))
     return "\n".join([_heading(label, color, level=2)] + [f"    {name}: {format_value(value)}" for name, value in fields])
+
+
+def format_state_fields(element: ElementInfo) -> list[tuple[str, object]]:
+    """状態属性のうち、取得できたものだけを行にする。
+
+    取得できなかった属性まで並べると、要素の大半で意味のない ``(None)`` が続く。
+    """
+    names = ("value", "is_checked", "is_selected", "is_offscreen", "has_keyboard_focus")
+    return [(name, getattr(element, name)) for name in names if getattr(element, name) is not None]
 
 
 def format_target_window(target_window: TargetWindowInfo | None, color: bool = False) -> str:
@@ -211,6 +222,26 @@ def format_windows_result(result: WindowsResult, color: bool = False, include_he
     return "\n".join(lines) + "\n"
 
 
+def format_expect_result(result: ExpectResult, color: bool = False) -> str:
+    lines = [_heading("Expect", color, level=1)]
+    if result.status != "success":
+        lines.extend(["    status: failed", f"    message: {format_value(result.message)}"])
+        return "\n".join(lines) + "\n"
+    expectation = result.expectation
+    lines.append(f"    satisfied: {result.satisfied}")
+    lines.append(f"    expectation: {expectation.kind}")
+    if expectation.expected is not None:
+        lines.append(f"    expected: {format_value(expectation.expected)}")
+    lines.append(f"    actual: {format_value(expectation.actual)}")
+    lines.append(f"    matched: {result.matched}")
+    for index, item in enumerate(result.results):
+        lines.append("")
+        lines.extend(
+            format_find_result(item, False, color, include_heading=index == 0).rstrip("\n").splitlines()
+        )
+    return "\n".join(lines) + "\n"
+
+
 def format_find_result(
     result: FindResult,
     detail: bool = False,
@@ -254,6 +285,8 @@ def _find_match_lines(backend: str, match: FindMatch, detail: bool, color: bool)
         attrs.append(f"handle={format_handle(element.handle)}")
     if detail and element.rectangle is not None:
         attrs.append(f"rectangle={format_rectangle(element.rectangle)}")
+    for name, value in format_state_fields(element):
+        attrs.append(f"{name}={format_value(value)}")
     suffix = ("  " + ", ".join(attrs)) if attrs else ""
     depth = element.depth if element.depth is not None else 0
     lines = [f"    {depth} {kind:<7} {quote_text(element.window_text)}{suffix}"]
