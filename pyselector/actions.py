@@ -66,4 +66,7 @@ _HANDLERS: dict[str, tuple[tuple[str, Callable[..., Any]], ...]] = {
     "focus": (("set_focus", _no_arg),),
     "set_text": (("set_edit_text", _with_text), ("set_text", _with_text)),
     "send_keys": (("type_keys", _type_keys),),
+    # act のフラグには出さない。ウィンドウを閉じるのは close コマンドの仕事で、
+    # そちらには --force と --dry-run という別の作法がある。
+    "close": (("close", _no_arg),),
 }

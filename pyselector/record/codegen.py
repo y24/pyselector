@@ -9,6 +9,8 @@ from pyselector.utils.text import escape_python_string
 #: これに置き換える。
 WINDOW_VAR = "window"
 SELECTOR_PREFIX = "dlg."
+#: 対象がウィンドウ自身であることを表すセレクター。close が使う。
+WINDOW_SELF = "dlg"
 
 EMIT_FORMATS = ("pytest", "plain", "none")
 
@@ -246,6 +248,8 @@ def _selector_expression(step: RecordedStep) -> str | None:
     if step.selector is None or not step.selector.text:
         return None
     text = step.selector.text
+    if text == WINDOW_SELF:
+        return WINDOW_VAR
     if text.startswith(SELECTOR_PREFIX):
         return WINDOW_VAR + text[len(SELECTOR_PREFIX) - 1:]
     return text

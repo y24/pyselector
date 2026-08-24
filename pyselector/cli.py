@@ -8,6 +8,7 @@ from pathlib import Path
 from pyselector import __version__
 from pyselector.config import AppConfig, load_config
 from pyselector.install import SKILL_LABELS, install_skill
+from pyselector.commands.lifecycle import run_close, run_launch
 from pyselector.commands.record import run_record
 from pyselector.inspect_runner import (
     run_act,
@@ -103,6 +104,12 @@ def build_parser(config: AppConfig | None = None) -> argparse.ArgumentParser:
     expect = subparsers.add_parser("expect", help="Check a condition about the UI and report whether it holds")
     _add_expect_options(expect, config)
 
+    launch = subparsers.add_parser("launch", help="Start an application and wait for its main window (disabled by default)")
+    _add_launch_options(launch, config)
+
+    close = subparsers.add_parser("close", help="Close a window or end its process (disabled by default)")
+    _add_close_options(close, config)
+
     record = subparsers.add_parser("record", help="Record acts and expectations, then emit pywinauto code")
     _add_record_options(record)
 
@@ -123,7 +130,9 @@ def build_parser(config: AppConfig | None = None) -> argparse.ArgumentParser:
     version.add_argument("--json", action="store_true")
 
     for name, subparser in subparsers.choices.items():
-        if name not in ("serve", "install-skills", "record"):
+        # launch / close をサーバーに送らない。起動したプロセスが常駐プロセスの
+        # 配下になり、サーバーを止めたときの巻き添えが読みにくくなるため（設計 11 §12）。
+        if name not in ("serve", "install-skills", "record", "launch", "close"):
             _add_server_option(subparser)
     return parser
 
@@ -187,6 +196,13 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         if args.command == "record":
             return run_record(args)
+        if args.command in ("launch", "close"):
+            if args.command == "close":
+                _validate_close_target(args, parser)
+            args.env_allow_actions = config.act.allow_actions
+            args.poll_interval = config.wait.poll_interval
+            args.apps = config.apps
+            return run_launch(args) if args.command == "launch" else run_close(args)
         if args.command == "install-skills":
             return _run_install_skills(args, parser)
         if args.command == "diff":
@@ -485,6 +501,46 @@ def _add_note_option(parser: argparse.ArgumentParser) -> None:
         "--note",
         help="Label this step in the recording (ignored when not recording)",
     )
+
+
+def _add_launch_options(parser: argparse.ArgumentParser, config: AppConfig) -> None:
+    parser.add_argument("--exe", help="Executable to start")
+    parser.add_argument("--app", help="Named entry from the apps section of the config file")
+    parser.add_argument("--args", nargs="*", default=None, metavar="ARG", help="Arguments passed to the executable")
+    parser.add_argument("--wait-title-re", metavar="RE", help="Wait for a window whose title matches this pattern")
+    parser.add_argument("--timeout", type=_positive_int, default=None, help="How long to wait for the window")
+    parser.add_argument(
+        "--attach-existing",
+        action="store_true",
+        help="Connect to a matching window instead of starting a second instance",
+    )
+    parser.add_argument("--backend", choices=["win32", "uia"], default=config.act.backend)
+    _add_note_option(parser)
+    parser.add_argument("--allow-actions", action="store_true", help="Required to actually start the application")
+    parser.add_argument("--dry-run", action="store_true", help="Report what would be started without starting it")
+    parser.add_argument("--json", action="store_true")
+
+
+def _add_close_options(parser: argparse.ArgumentParser, config: AppConfig) -> None:
+    parser.add_argument("--window-handle", type=_handle, help="Window to close")
+    parser.add_argument("--window-title", help="Window to close, by title")
+    parser.add_argument("--title-re", action="store_true", help="Treat --window-title as a regular expression")
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="End the process instead of asking the window to close",
+    )
+    parser.add_argument("--backend", choices=["win32", "uia"], default=config.act.backend)
+    _add_note_option(parser)
+    parser.add_argument("--allow-actions", action="store_true", help="Required to actually close anything")
+    parser.add_argument("--dry-run", action="store_true", help="Report the target without closing it")
+    parser.add_argument("--json", action="store_true")
+
+
+def _validate_close_target(args: argparse.Namespace, parser: argparse.ArgumentParser) -> None:
+    targets = [args.window_handle is not None, args.window_title is not None]
+    if sum(1 for target in targets if target) != 1:
+        parser.error("close requires exactly one of --window-handle or --window-title")
 
 
 def _add_record_options(parser: argparse.ArgumentParser) -> None:

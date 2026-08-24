@@ -6,6 +6,7 @@ from typing import Any, Callable
 from pyselector.commands import common
 from pyselector.commands.common import (
     _build_backend_inspection,
+    _ensure_actions_allowed,
     _candidate_hint,
     _element_center,
     _has_element_conditions,
@@ -23,9 +24,8 @@ from pyselector.model.element_info import ElementInfo
 from pyselector.output.json_output import format_act_result_json
 from pyselector.record import capture as record_capture
 from pyselector.output.text_output import format_act_result
-from pyselector.server import session as server_session
 from pyselector.server.refs import ref_backend
-from pyselector.utils.errors import ActionNotAllowedError, AmbiguousTargetError, ElementNotFoundError
+from pyselector.utils.errors import AmbiguousTargetError, ElementNotFoundError
 from pyselector.utils.logging import info_log
 from pyselector.wait import DEFAULT_POLL_INTERVAL, poll_until_stable
 
@@ -130,31 +130,6 @@ def run_act(args: Namespace) -> int:
     )
     print(output, end="")
     return 0
-
-
-def _ensure_actions_allowed(args: Namespace) -> None:
-    """UI 操作を実行してよいかを確かめる。
-
-    本質的な関門から順に見る。.env とコマンドのフラグが「この操作を許すか」を決め、
-    常駐サーバーの上限は「このデーモンに UI を触らせるか」という別の軸なので最後に見る。
-    順序を逆にすると、.env を書いていないだけの利用者に的外れな理由を返してしまう。
-    """
-    if not getattr(args, "env_allow_actions", False):
-        raise ActionNotAllowedError(
-            "UI 操作は既定で無効です。.env に PYSELECTOR_ALLOW_ACTIONS=true を書いてください"
-        )
-    if not getattr(args, "allow_actions", False):
-        raise ActionNotAllowedError("UI 操作には --allow-actions の指定が必要です")
-    session = server_session.current_session()
-    if session is not None and not session.allow_actions:
-        # 設定もフラグも揃っているのに、このデーモンだけが UI 操作を持たない状態。
-        # 自動起動なら設定を引き継ぐので、ここに来るのは手動起動したサーバーか、
-        # act を許可していない別のディレクトリから先に自動起動された場合。
-        raise ActionNotAllowedError(
-            "この常駐サーバーは UI 操作を許可していません。"
-            "pyselector serve --stop で止めてから pyselector serve --allow-actions で"
-            "起動し直すか、--server off でローカル実行してください"
-        )
 
 
 def _resolve_act_target(

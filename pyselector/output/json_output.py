@@ -10,6 +10,7 @@ from pyselector.model.expect_result import ExpectResult
 from pyselector.model.find_result import FindMatch, FindResult
 from pyselector.model.hierarchy import HierarchyNode
 from pyselector.model.inspection_result import BackendInspection, InspectionResult, TreeResult
+from pyselector.model.lifecycle_result import CloseResult, LaunchResult
 from pyselector.model.rectangle import RectangleInfo
 from pyselector.model.selector_candidate import SelectorCandidate, SelectorEvaluation, SelectorStep
 from pyselector.model.target_window import TargetWindowInfo
@@ -76,6 +77,47 @@ def _wait_to_dict(outcome: WaitOutcome | None) -> dict[str, object]:
     if outcome is None:
         return {}
     return {"waited": outcome.rounded, "attempts": outcome.attempts, "timed_out": outcome.timed_out}
+
+
+def format_launch_result_json(result: LaunchResult, recorded: RecordedStep | None = None) -> str:
+    return _dump(
+        _envelope(
+            "launch",
+            result.status,
+            {
+                "exe": result.exe,
+                "args": list(result.args),
+                "window_title_re": result.window_title_re,
+                "timeout": result.timeout,
+                "dry_run": result.dry_run,
+                "attached": result.attached,
+                "pid": result.pid,
+                "backend": result.backend,
+                "window": _element_to_dict(result.window),
+                "target_window": _target_window_to_dict(result.target_window),
+                "recorded": _recorded_to_dict(recorded),
+            },
+        )
+    )
+
+
+def format_close_result_json(result: CloseResult, recorded: RecordedStep | None = None) -> str:
+    return _dump(
+        _envelope(
+            "close",
+            result.status,
+            {
+                "performed": result.performed,
+                "dry_run": result.dry_run,
+                "forced": result.forced,
+                "method": result.method,
+                "backend": result.backend,
+                "window": _element_to_dict(result.window),
+                "target_window": _target_window_to_dict(result.target_window),
+                "recorded": _recorded_to_dict(recorded),
+            },
+        )
+    )
 
 
 def format_recording_json(

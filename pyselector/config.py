@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import os
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
@@ -90,6 +90,24 @@ class ServerConfig:
 
 
 @dataclass(frozen=True)
+class AppEntry:
+    """launch --app が引く 1 アプリぶんの定義。"""
+
+    exe: str
+    args: list[str] = field(default_factory=list)
+    window_title_re: str | None = None
+    timeout: int = 30
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "exe": self.exe,
+            "args": list(self.args),
+            "window_title_re": self.window_title_re,
+            "timeout": self.timeout,
+        }
+
+
+@dataclass(frozen=True)
 class WaitConfig:
     """待機のポーリング間隔。
 
@@ -114,6 +132,7 @@ class AppConfig:
     expect: ExpectConfig = ExpectConfig()
     act: ActConfig = ActConfig()
     wait: WaitConfig = WaitConfig()
+    apps: dict[str, dict[str, Any]] = field(default_factory=dict)
     selector: SelectorConfig = SelectorConfig()
     server: ServerConfig = ServerConfig()
     loaded_path: Path | None = None
@@ -149,7 +168,9 @@ def _resolve_config_path() -> Path | None:
 
 
 def _build_config(raw: dict[str, Any], path: Path) -> AppConfig:
-    allowed_sections = {"inspect", "tree", "windows", "find", "expect", "act", "wait", "selector", "server"}
+    allowed_sections = {
+        "inspect", "tree", "windows", "find", "expect", "act", "wait", "apps", "selector", "server",
+    }
     _reject_unknown_keys(raw, allowed_sections, "config", path)
     inspect = _section(raw, "inspect", path)
     tree = _section(raw, "tree", path)
@@ -208,6 +229,7 @@ def _build_config(raw: dict[str, Any], path: Path) -> AppConfig:
         wait=WaitConfig(
             poll_interval=_positive_float(wait, "poll_interval", 0.3, path),
         ),
+        apps=_apps(raw, path),
         selector=SelectorConfig(
             evaluation_max_items=_positive_int(selector, "evaluation_max_items", 10, path),
             found_index_trial_count=_positive_int(selector, "found_index_trial_count", 3, path),
@@ -221,6 +243,34 @@ def _build_config(raw: dict[str, Any], path: Path) -> AppConfig:
         ),
         loaded_path=path,
     )
+
+
+def _apps(raw: dict[str, Any], path: Path) -> dict[str, dict[str, Any]]:
+    """apps は他のセクションと違い、任意のキーを持つ辞書なので専用に検証する。"""
+    value = raw.get("apps", {})
+    if not isinstance(value, dict):
+        raise ArgumentError(f"config section must be an object: apps: {path}")
+    apps: dict[str, dict[str, Any]] = {}
+    for name, entry in value.items():
+        if not isinstance(entry, dict):
+            raise ArgumentError(f"config value must be an object: apps.{name}: {path}")
+        _reject_unknown_keys(entry, {"exe", "args", "window_title_re", "timeout"}, f"apps.{name}", path)
+        exe = entry.get("exe")
+        if not isinstance(exe, str) or not exe:
+            raise ArgumentError(f"config value must be a non-empty string: apps.{name}.exe: {path}")
+        args = entry.get("args", [])
+        if not isinstance(args, list) or any(not isinstance(item, str) for item in args):
+            raise ArgumentError(f"config value must be a list of strings: apps.{name}.args: {path}")
+        title_re = entry.get("window_title_re")
+        if title_re is not None and not isinstance(title_re, str):
+            raise ArgumentError(f"config value must be null or a string: apps.{name}.window_title_re: {path}")
+        apps[name] = AppEntry(
+            exe=exe,
+            args=list(args),
+            window_title_re=title_re,
+            timeout=_positive_int(entry, "timeout", 30, path),
+        ).to_dict()
+    return apps
 
 
 def _section(raw: dict[str, Any], key: str, path: Path) -> dict[str, Any]:

@@ -9,6 +9,7 @@ from pyselector.model.expect_result import ExpectResult
 from pyselector.model.find_result import FindMatch, FindResult
 from pyselector.model.hierarchy import HierarchyNode
 from pyselector.model.inspection_result import BackendInspection, InspectionResult, TreeResult
+from pyselector.model.lifecycle_result import CloseResult, LaunchResult
 from pyselector.model.selector_candidate import SelectorEvaluation
 from pyselector.model.target_window import TargetWindowInfo
 from pyselector.model.window_summary import WindowsResult
@@ -219,6 +220,35 @@ def format_windows_result(result: WindowsResult, color: bool = False, include_he
         lines.append(f"    {format_handle(window.handle)} {quote_text(window.title)}{suffix}")
     if result.reached_limit:
         lines.append("[WARN] max-items に達したため、以降のウィンドウ表示を省略しました。")
+    return "\n".join(lines) + "\n"
+
+
+def format_launch_result(result: LaunchResult, color: bool = False) -> str:
+    lines = [_heading("Launch", color, level=1)]
+    lines.append(f"    exe: {result.exe}")
+    if result.args:
+        lines.append(f"    args: {' '.join(result.args)}")
+    if result.window_title_re:
+        lines.append(f"    window_title_re: {result.window_title_re}")
+    lines.append(f"    dry_run: {result.dry_run}")
+    lines.append(f"    attached: {result.attached}")
+    if result.pid is not None:
+        lines.append(f"    pid: {result.pid}")
+    if result.window is not None:
+        lines.append(f"    handle: {format_handle(result.window.handle)}")
+        lines.append(f"    title: {quote_text(result.window.window_text)}")
+    return "\n".join(lines) + "\n"
+
+
+def format_close_result(result: CloseResult, color: bool = False) -> str:
+    lines = [_heading("Close", color, level=1)]
+    lines.append(f"    performed: {result.performed}")
+    lines.append(f"    dry_run: {result.dry_run}")
+    lines.append(f"    forced: {result.forced}")
+    lines.append(f"    method: {format_value(result.method)}")
+    if result.window is not None:
+        lines.append(f"    handle: {format_handle(result.window.handle)}")
+        lines.append(f"    title: {quote_text(result.window.window_text)}")
     return "\n".join(lines) + "\n"
 
 

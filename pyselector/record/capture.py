@@ -7,6 +7,7 @@ from typing import Any, Callable
 from pyselector.model.element_info import ElementInfo
 from pyselector.model.selector_candidate import SelectorEvaluation
 from pyselector.record import store
+from pyselector.record.codegen import WINDOW_SELF
 from pyselector.record.model import RecordedSelector, RecordedStep
 from pyselector.selector.snippet import choose_snippet_candidate
 from pyselector.utils.text import escape_python_string, escape_regex
@@ -126,14 +127,9 @@ def record_close(
 ) -> RecordedStep | None:
     if not store.is_recording():
         return None
-    title = getattr(target_window, "title", None)
-    selector = None
-    if title:
-        selector = RecordedSelector(
-            text=f'dlg.child_window(title="{escape_python_string(str(title))}")',
-            kind="window_title",
-            source="conditions",
-        )
+    # close の対象はトップレベルウィンドウそのもの。子要素として探し直させると、
+    # 自分と同じタイトルの子を探すコードになって必ず失敗する。
+    selector = RecordedSelector(text=WINDOW_SELF, kind="window_itself", source="conditions")
     return store.append(
         lambda seq: RecordedStep(
             seq=seq,
