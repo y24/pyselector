@@ -26,12 +26,12 @@ Local CLI that inspects Windows desktop UI elements, drives them, checks their s
 
 ## Two things this tool is for
 
-1. **Finding a selector** for a control so you can write pywinauto code by hand.
-2. **Writing a test end to end**: start the app, drive it, check the result, and emit a runnable pywinauto test. That is `record` plus `launch` / `act` / `expect`.
+1. **Finding a selector** for a control, so you can write pywinauto code by hand.
+2. **Writing a test end to end**: start the app, drive it, check the result, and emit a runnable pywinauto test.
 
-If the user asked for a test, use the second loop. The generated file depends on pywinauto only - pyselector is not needed to run it.
+Pick the second when the user asked for a test or for automation of a flow. The generated file imports pywinauto and nothing else - pyselector is not needed to run it.
 
-## Workflow: narrow from the outside in
+## Exploring: narrow from the outside in
 
 ```powershell
 pyselector windows --json                                                 # 1. locate window -> handle
@@ -43,31 +43,35 @@ pyselector inspect --json --at 636,2240                                   # 5. o
 
 Never start at step 5, and never dump a whole tree when `--summary` or `find` answers the question.
 
-## When `find` returns nothing
-
-Zero matches is a result, not a failure: `status` stays `"success"` and `matches` is empty. Work down this list in order rather than guessing at new conditions:
-
-1. Raise `--depth` / `--max-items`, and check `reached_limit` - the walk may have been cut short.
-2. Drop one condition. `--control-type` is the usual culprit; UIA and win32 name types differently.
-3. Loosen `--text` to `--text-re`. `--text` is already a case-insensitive substring, so if it fails the text itself is different.
-4. Switch `--backend` (win32 <-> uia). A control invisible to one is often plain in the other.
-5. Add `--include-hidden` when the element may be scrolled out or collapsed.
-6. Run `tree --json --summary` and re-read the structure instead of guessing.
-7. Consider that the element is not on screen yet: open the menu or tab with `act --diff`, then search inside `diff.added`.
-8. Add `--wait 5` when the screen may still be drawing.
-
-Stop and report to the user once you have worked through this without success. Do not keep trying variations on a screen you have not understood.
+Reuse the `handle` from step 1 in every later command; it is more reliable than a title, which can match several windows. To reach a screen that is not visible yet (a closed menu, another tab), see `act`.
 
 **Never run bare `pyselector inspect` or `tree --cursor`** - both open an overlay and wait on a human mouse click.
 
-Reuse the `handle` from step 1 in every later command; it is more reliable than a title, which can match several windows. To reach a screen that is not visible yet (a closed menu, another tab), see `act`.
+## Recording a test end to end
+
+```powershell
+pyselector record start --name "check the calculation"
+
+pyselector launch --json --app calculator --allow-actions                      # -> handle
+pyselector act    --json --window-handle 0x2E20F46 --auto-id num5Button  --click --allow-actions
+pyselector act    --json --window-handle 0x2E20F46 --auto-id plusButton  --click --allow-actions
+pyselector act    --json --window-handle 0x2E20F46 --auto-id num3Button  --click --allow-actions
+pyselector act    --json --window-handle 0x2E20F46 --auto-id equalButton --click --allow-actions
+pyselector expect --json --window-handle 0x2E20F46 --auto-id CalculatorResults --value-contains "8" --wait 5
+
+pyselector record stop --emit pytest --out tests/test_calc.py
+```
+
+Explore with `find` as much as you need in between; exploration is not recorded. What lands in the test is the `launch`, the `act`s that ran, and the `expect`s that held.
+
+Before `stop`, run `record show --json` and check every step has a `selector`. Report anything with `selector: null` to the user instead of papering over it.
 
 ## Shared options
 
-- `--backend win32` first for classic apps; `uia` for modern/UWP/WinUI apps or when win32 cannot see the target; `both` only when comparing candidates is genuinely useful (it doubles the work).
+- `--backend win32` first for classic apps; `uia` for modern/UWP/WinUI apps or when win32 cannot see the target; `both` only when comparing candidates is genuinely useful (it doubles the work). `act`, `expect`, `shot`, `launch` and `close` take one backend only, never `both`.
 - `--scope window` normally; `--scope desktop` only to evaluate a candidate across multiple windows.
 - `--include-hidden` only when hidden or offscreen elements are relevant.
-- Run from the repository root unless the user says otherwise. The target app must be open; `launch` can open it when the user has allowed actions.
+- Run from the repository root unless the user says otherwise. The target app must already be open, unless you open it with `launch`.
 
 ## `windows`: find the target window
 
@@ -84,13 +88,16 @@ pyselector find --json --window-handle 0x2E20F46 --control-type Button
 pyselector find --json --window-handle 0x2E20F46 --text Save --with-selectors
 pyselector find --json --window-title Notepad --class-name Edit --backend win32
 pyselector find --json --at 636,2240 --depth 2
+pyselector find --json --window-handle 0x2E20F46 --auto-id dialog --wait 5
 ```
 
-Requires exactly one of `--window-handle` / `--window-title` / `--at`. Conditions AND together: `--text` (case-insensitive substring), `--text-re`, `--auto-id`, `--control-type` (case-insensitive), `--class-name`, `--enabled-only`.
+Requires exactly one of `--window-handle` / `--window-title` / `--at` / `--ref`. Conditions AND together: `--text` (case-insensitive substring), `--text-re`, `--auto-id`, `--control-type` (case-insensitive), `--class-name`, `--enabled-only`.
 
 `results[].matches[]`: `point` (element center; feed straight to `inspect --at`), `handle` (win32 only, often `null` on UIA), `depth`, `element`, and `inspection` (only with `--with-selectors`; same shape as an `inspect` backend entry). Also read `scanned`, `total_matched`, `reached_limit` (the walk hit `--max-items`) and `truncated` (matches cut by `--limit`); widen `--depth` / `--max-items` when an expected element is missing.
 
 `--with-selectors` evaluates candidates only for the first `--selector-limit` matches (default 3), since evaluation is the expensive part. Narrow the conditions rather than raising that limit.
+
+`--with-state` additionally reads `value` / `is_checked` / `is_selected` for the listed matches. `--wait` / `--wait-gone` are described under **Waiting**.
 
 ## `tree`: explore a window structure
 
@@ -100,7 +107,7 @@ pyselector tree --json --window-handle 0x2E20F46 --depth 3 --compact
 pyselector tree --json --window-title "<title regex>" --title-re --backend uia
 ```
 
-Requires exactly one of `--window-handle` / `--window-title` / `--cursor` (never `--cursor`). Start with `--summary`, which returns counts by `control_type` and `class_name` instead of every node; add `--compact` to trim fields when you do need nodes.
+Requires exactly one of `--window-handle` / `--window-title` / `--ref` / `--cursor` (never `--cursor`). Start with `--summary`, which returns counts by `control_type` and `class_name` instead of every node; add `--compact` to trim fields when you do need nodes.
 
 `results[]`: `root`, `nodes` (flattened hierarchy with depth and attributes), `summary` (replaces `nodes` under `--summary`), `reached_limit`.
 
@@ -113,7 +120,7 @@ pyselector inspect --json --handle 0x2E20F46
 
 `--at` takes a physical screen coordinate, the same space `find` reports in `point` and `rectangle`. Use `--handle` for a top-level window or dialog itself; inspecting its center coordinate would return a child control. The screen may have changed since a coordinate was captured, so check the returned `element.window_text` / `control_type` against what you expected.
 
-Response: `cursor_position`, `target_window`, and `backends[]` with `element` (attributes), `hierarchy` (parent chain to the target), `selector_candidates` (evaluated pywinauto candidates with hit counts and warnings), `code_snippet`.
+Response: `cursor_position`, `target_window`, and `backends[]` with `element` (attributes and `state`), `hierarchy` (parent chain to the target), `selector_candidates` (evaluated pywinauto candidates with hit counts and warnings), `code_snippet`.
 
 ## `act`: drive the UI
 
@@ -138,6 +145,8 @@ Targeting uses the same conditions as `find` and **must be unique**: several mat
 Rules: prefer `--invoke` over `--click` where it works (UIA invoke pattern, no physical mouse). Re-read state between actions instead of assuming it. Never act on a target you have not resolved with `--dry-run` or `find`. Never dismiss dialogs, confirm prompts, delete data, submit forms, or send anything unless the user asked for that specific step.
 
 **Report the outcome of each `act` before moving on.** State the exit code and `status`, and say what the element looks like afterwards (`element_after`, or `diff` when you asked for it). Do not chain a second action on the assumption that the first worked.
+
+An action can also fail because pywinauto has no matching method for that control: `action_failed` (exit 8) lists what was tried, for example `set_edit_text: unsupported`. That is a limit of the control, not a wrong selector - use `--focus` followed by `--send-keys` rather than retrying the same way.
 
 ### When `act` is refused
 
@@ -174,7 +183,7 @@ The ones that need a unique target fail with `ambiguous_target` (exit 6) when se
 
 **"The check did not hold" and "the check could not run" are different results.** `satisfied: false` with `status: "success"` (exit 12) means the UI is not in the expected state. `status: "error"` means the search itself failed - a missing window, a bad handle. Read `satisfied`, not the exit code alone. `expectation.actual` carries what was actually found, and `matched` tells you whether anything was there at all.
 
-`--value-*` and `--checked` read live UIA state (`value`, `is_checked`). `--backend win32` cannot report `value`, because in win32 a value is indistinguishable from the label text - use `uia` for those.
+`--value-*` and `--checked` read live UIA state. `--backend win32` cannot report `value`, because in win32 a value is indistinguishable from the label text - use `uia` for those.
 
 ## Waiting
 
@@ -189,7 +198,7 @@ pyselector act    --json --ref uia:7f3a2b:42 --click --allow-actions --settle 3
 
 A timeout is not an error: you get the last attempt's result, so `find --wait` ends with zero matches and `expect --wait` with `satisfied: false`. The response reports `waited`, `attempts` and `timed_out`.
 
-Prefer `expect --wait` over `act --settle` when you are about to record a test: a waited expectation becomes a `wait(...)` line in the generated code, while `--settle` is a pyselector-only concept and generates nothing.
+When you are recording, reach for `expect --wait` rather than `act --settle`: a waited expectation becomes a `wait(...)` line in the generated test, while `--settle` is a pyselector-only idea and generates nothing.
 
 ## `shot`: see the screen
 
@@ -219,7 +228,7 @@ pyselector close  --json --window-handle 0x2E20F46 --allow-actions
 
 `launch` returns the `pid` and the main window's `handle` - **feed that handle straight into every later command**. `--app NAME` reads an entry from the `apps` section of `pyselector_config.json` (`exe`, `args`, `window_title_re`, `timeout`); ask the user to add one rather than hard-coding a path if they will run this repeatedly. `--attach-existing` connects to a matching window instead of opening a second instance.
 
-Prefer `--wait-title-re` over relying on the process id: apps like `calc.exe` hand their window to a different process.
+Prefer `--wait-title-re` over relying on the process id: apps like `calc.exe` hand their window to a different process. When an instance is already open, `launch` prefers a window that appeared after it started - but a tabbed app that reuses its existing window will hand you that one, so check the `title` you got back is the screen you meant.
 
 `close` asks the window to close. `--force` ends the process instead, which can destroy unsaved work - only use it when the user asked for it.
 
@@ -238,7 +247,8 @@ pyselector record stop --emit pytest --out tests/test_save_flow.py
 - `--emit pytest` (default) writes a test with a `window` fixture; `--emit plain` writes a standalone script; `--emit none` returns the raw recording.
 - Without `--out` the code comes back in the response; with `--out` it is written to that path and will not overwrite an existing file without `--force`.
 - `record cancel` throws the recording away. `record status` says whether one is running.
-- Only one recording exists at a time, per user.
+- Only one recording exists at a time, per user. `start` refuses to replace one without `--force`.
+- `--note "..."` on `act` and `expect` adds a comment to that step in the generated code.
 
 What gets recorded and what does not:
 
@@ -248,7 +258,7 @@ What gets recorded and what does not:
 | `expect` that was satisfied | `expect` that failed |
 | `launch`, `close` | `find`, `tree`, `inspect`, `shot` |
 
-Exploration is deliberately absent from the recording: it is how you found the element, not a step of the test.
+Exploration is deliberately absent: it is how you found the element, not a step of the test. A failed expectation is left out because writing it down would produce an assertion guaranteed to fail.
 
 While recording, `act` and `expect` also evaluate selector candidates for the resolved element and store the best one, so what lands in the code is a stable selector rather than the conditions you happened to type. That costs an extra evaluation per step, only while recording. Check `recorded.selector` in the response; if `selector` is `null`, the generated code will contain a `NotImplementedError` for you to fill in, and the honest move is to tell the user rather than to invent a selector.
 
@@ -284,6 +294,22 @@ pyselector diff --json before.json after.json
 
 `results[]`: `added`, `removed`, `changed` (`before` / `after` per field), `summary`. Exit 0 means differences were found, 1 means identical. Snapshots taken with `--summary` cannot be compared. Use `act --diff` when you are the one causing the change.
 
+## When `find` or `expect` turns up nothing
+
+Zero matches is a result, not a failure: `status` stays `"success"` and `matches` is empty. Work down this list in order rather than inventing new conditions:
+
+1. Raise `--depth` / `--max-items`, and check `reached_limit` - the walk may have been cut short.
+2. Drop one condition. `--control-type` is the usual culprit; UIA and win32 name types differently.
+3. Loosen `--text` to `--text-re`. `--text` is already a case-insensitive substring, so if it fails the text itself is different.
+4. Switch `--backend` (win32 <-> uia). A control invisible to one is often plain in the other.
+5. Add `--include-hidden` when the element may be scrolled out or collapsed.
+6. Run `tree --json --summary` and re-read the structure instead of guessing.
+7. Consider that the element is not on screen yet: open the menu or tab with `act --diff`, then search inside `diff.added`.
+8. Add `--wait 5` when the screen may still be drawing.
+9. Take a `shot` and look at it.
+
+Stop and report to the user once you have worked through this without success. Do not keep trying variations on a screen you have not understood - on a tool that drives the real desktop, that is how the wrong thing gets clicked.
+
 ## Element refs (resident mode)
 
 A resident server may be running for this repository. It starts on demand, stops when idle, and changes nothing about how you invoke commands. When the envelope reports `"served": true`, elements carry a `ref`:
@@ -293,11 +319,12 @@ pyselector find --json --window-handle 0x2E20F46 --auto-id saveBtn   # -> "ref":
 pyselector act  --json --ref uia:7f3a2b:42 --click --allow-actions
 ```
 
-A `ref` names one exact element, so prefer it over re-running `find` or reusing a coordinate. It works with `inspect`, `tree`, `find` and `act`, and replaces `--at` / `--window-handle` / `--window-title`.
+A `ref` names one exact element, so prefer it over re-running `find` or reusing a coordinate. It works with `inspect`, `tree`, `find`, `act`, `expect` and `shot`, and replaces `--at` / `--window-handle` / `--window-title`.
 
 - A `ref` is valid only while the server that issued it runs. It never appears when `served` is `false`, and you must not invent one.
 - If the screen changed or the server restarted, the command fails with `stale_ref` (exit 9) and **performs no action**; run `find` again for a fresh `ref`.
 - Pass `--server require` when you need refs: otherwise a command may silently fall back to local execution and return none. It fails with `server_unavailable` (exit 11) when no server is reachable.
+- `launch`, `close`, `shot`, `record` and `batch` never go through the server, so they never mint refs.
 
 ## JSON contract
 
@@ -305,9 +332,17 @@ Every `--json` response carries `schema_version`, `command`, `status`, `served`.
 
 `status` is `"success"` when at least one backend completed, even if nothing matched: a search that finds nothing returns `"success"` with an empty `matches` / `windows` array and exit code 1. A failure returns `"error"` with an `error` object holding `code`, `exit_code`, `message`. **Distinguish "not found" from "failed" by `status`, not by exit code alone.**
 
-Exit codes worth recognising: `1` nothing matched, `6` `ambiguous_target`, `7` `action_not_allowed`, `9` `stale_ref`, `10` argument error, `11` `server_unavailable`, `12` expectation not satisfied, `13` screenshot failed.
+Exit codes worth recognising: `1` nothing matched, `6` `ambiguous_target`, `7` `action_not_allowed`, `8` `action_failed`, `9` `stale_ref`, `10` argument error, `11` `server_unavailable`, `12` expectation not satisfied, `13` screenshot failed.
 
 Elements carry a `state` object (`value`, `is_checked`, `is_selected`, `is_offscreen`, `has_keyboard_focus`) only where it was actually read: always in `inspect` and `act`, in `expect` when the check needs it, and in `find` under `--with-state`. Reading state costs a UIA call per element, so `find` leaves it off by default. A `null` inside `state` means the control does not expose that property - notably `is_checked` is `null` for a tri-state checkbox that is neither on nor off, and neither `--checked` nor `--unchecked` will be satisfied by it.
+
+## What changes state
+
+- **The desktop**: only `act`, `launch` and `close`, and only through both gates.
+- **The filesystem**: `shot --out`, `record stop --out`, and the recording itself. These need no permission, and none of them overwrite an existing file without `--force`.
+- **Nothing at all**: `windows`, `find`, `tree`, `inspect`, `expect`, `diff`. `batch` is whatever its steps are.
+
+Handles and coordinates captured earlier hold only while the screen is unchanged; a `ref` additionally dies with its server.
 
 ## Choosing a selector
 
@@ -315,7 +350,6 @@ Elements carry a `state` object (`value`, `is_checked`, `is_selected`, `is_offsc
 - Distrust candidates built on window handles or `found_index`; they shift between app launches and UI changes.
 - If every candidate has warnings or many hits, run `tree` and build a more specific parent-scoped selector from the hierarchy.
 - When both backends work, take the one with the simpler stable selector and a reliable code snippet.
-- Every command except `act` only reads the UI. Handles and coordinates from an earlier run hold only while the screen is unchanged; a `ref` additionally dies with its server.
 """
 
 
