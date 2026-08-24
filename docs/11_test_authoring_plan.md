@@ -177,7 +177,7 @@ win32 バックエンドでは `value` に `window_text` 相当が入ること�
 
 ### 5.3 出力
 
-`--json` の `element` オブジェクトに 5 キーが加わる。`--compact` では省く（compact は要素の同定に必要な最小限という位置づけを維持する）。
+`--json` の `element` オブジェクトに、状態を読んだときだけ `state` オブジェクトが加わる。常に 5 キーを並べると「取得できなかった」と「読んでいない」が区別できなくなるため、有無そのものを情報にする。`--compact` では省く（compact は要素の同定に必要な最小限という位置づけを維持する）。
 
 テキスト出力では、値が `None` でないものだけを `[Backend]` セクションに追加表示する。
 
@@ -403,14 +403,19 @@ def test_保存フロー(window):
 | `checked` | `assert w.child_window(...).get_toggle_state() == 1` |
 | `enabled` | `assert w.child_window(...).is_enabled()` |
 
-待機付きで記録されたものは `wait` に変換する。
+待機付きで記録されたものは `wait` に変換する。`find` は記録しないため、生成コードに
+待機が入る経路は `expect --wait` だけである。
 
 ```python
-# find --wait 5 として記録されたもの
+# expect --auto-id dialog --exists --wait 5 として記録されたもの
 window.child_window(auto_id="dialog").wait("exists", timeout=5)
-# find --wait-gone 5
+# expect --auto-id spinner --not-exists --wait 5
 window.child_window(auto_id="spinner").wait_not("exists", timeout=5)
 ```
+
+`act --settle` は記録には残るが、コードは生成しない。「画面が落ち着くまで待つ」は
+pyselector 側の概念で、pywinauto に対応する表現が無い。相当する待機を生成コードに
+入れたければ、続けて `expect --wait` を書くこと。
 
 `--emit plain` は pytest に依存しない単一スクリプト（`def main():` と `if __name__ == "__main__":`）を出す。
 

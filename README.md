@@ -60,6 +60,12 @@ pyselector inspect
 | `pyselector inspect --handle 0x...` | ウィンドウ自身を調査 |
 | `pyselector tree --window-handle 0x...` | タイトルに依存せずツリーを取得 |
 | `pyselector act` | 要素を操作する（既定で無効。後述） |
+| `pyselector expect` | 要素の存在・件数・値・状態を検証する |
+| `pyselector shot` | ウィンドウ・要素・画面を PNG に撮る |
+| `pyselector launch` | アプリを起動して主ウィンドウを待つ（既定で無効） |
+| `pyselector close` | ウィンドウを閉じる（既定で無効） |
+| `pyselector record` | 操作と検証を記録し、pywinauto コードを生成する |
+| `pyselector batch` | 複数コマンドを 1 プロセスで順に実行する |
 | `pyselector diff` | 2 つのツリー出力を比較する |
 
 外側から内側へ絞り込むのが基本の流れです。
@@ -290,6 +296,160 @@ pyselector serve --stop
 
 要求にはクライアントの版数が入ります。サーバーと異なる場合、サーバーは実行を拒み、クライアントはローカル実行にフォールバックしたうえで標準エラーにその旨を出します。`pip install -e .` で更新した後に古いサーバーが結果を返し続ける事故を防ぐためです。
 
+### `expect`（検証）
+
+要素がどうあるべきかを判定します。`find` と同じ条件で対象を指定し、判定をちょうど 1 つ指定します。
+
+```bash
+pyselector expect --json --window-handle 0x2E20F46 --auto-id saveBtn --exists
+pyselector expect --json --window-handle 0x2E20F46 --auto-id dialog --not-exists
+pyselector expect --json --window-handle 0x2E20F46 --control-type Button --count 5
+pyselector expect --json --window-handle 0x2E20F46 --auto-id nameBox --value-equals "山田"
+pyselector expect --json --window-handle 0x2E20F46 --auto-id agree --checked
+pyselector expect --json --window-handle 0x2E20F46 --auto-id submit --enabled
+```
+
+| 判定 | 対象が一意である必要 |
+| --- | --- |
+| `--exists` / `--not-exists` / `--count N` | 不要 |
+| `--value-equals` / `--value-contains` | 必要 |
+| `--checked` / `--unchecked` | 必要 |
+| `--enabled` / `--disabled` | 必要 |
+
+**判定が成立しないことと、判定を実行できないことは別物です。**
+
+```text
+status=success, satisfied=true   判定が成立した            終了コード 0
+status=success, satisfied=false  判定は動いたが成立しない  終了コード 12
+status=error                     判定そのものが実行できない（ウィンドウが無い等）
+```
+
+要素の値やチェック状態は、走査時ではなく判定に必要になった時点で読みます。`find` で状態を見たい場合は `--with-state` を付けます（出力する要素だけを読むため、走査そのものの速度は変わりません）。
+
+3 値のチェックボックスが「不定」のとき `is_checked` は `null` になり、`--checked` も `--unchecked` も成立しません。`false` として報告すると、チェックが外れていることを確かめたテストが誤って通るためです。
+
+win32 バックエンドでは `value` を読みません。表示テキストと区別が付かず、誤って通るアサーションを誘発するためです。
+
+### 待機
+
+画面は操作が返った瞬間に描き終わっているとは限りません。固定の sleep ではなく、期待する状態を指定して待ちます。
+
+```bash
+pyselector find   --json --window-handle 0x2E20F46 --auto-id dialog --wait 5
+pyselector find   --json --window-handle 0x2E20F46 --auto-id spinner --wait-gone 5
+pyselector expect --json --window-handle 0x2E20F46 --auto-id result --value-contains "完了" --wait 10
+pyselector act    --json --ref uia:7f3a2b:42 --click --allow-actions --settle 3
+```
+
+タイムアウトはエラーにしません。最後の試行の結果をそのまま返すので、`find --wait` なら 0 件、`expect --wait` なら `satisfied=false` として現れます。出力には `waited` / `attempts` / `timed_out` が付きます。
+
+`act --settle` は「連続 2 回の観測が一致するまで」待ちます。変化の無い画面では即座に返り、`--diff` と併用したときは安定した後のツリーを操作後として使います。
+
+### `shot`（スクリーンショット）
+
+要素ツリーは、自前描画のコントロールやアイコンだけのボタン、描画崩れを表現できません。
+
+```bash
+pyselector shot --json --window-handle 0x2E20F46 --out shot.png
+pyselector shot --json --ref uia:7f3a2b:42 --out button.png
+pyselector shot --json --screen --out desktop.png
+pyselector shot --json --window-handle 0x2E20F46 --annotate --control-type Button --out buttons.png
+```
+
+`--annotate` は `find` と同じ条件で一致した要素に番号付きの枠を描き込み、番号と要素の対応を JSON に返します。「画像の 3 番が探しているボタン」という形の対話が成立します。
+
+`origin` は画像の左上に対応する画面座標です。要素の `rectangle` と画像内の位置を突き合わせられます。既存ファイルは `--force` が無ければ上書きしません。
+
+判定は行いません。画面を見て判断するのは呼び出し側の役目です。
+
+### `launch` / `close`（アプリのライフサイクル / 既定で無効）
+
+どちらもマシンの状態を変えるため、**`act` と同じ 2 段階の許可**（`.env` の `PYSELECTOR_ALLOW_ACTIONS=true` と `--allow-actions`）が必要です。`--dry-run` も同じように使えます。
+
+```bash
+pyselector launch --json --exe "C:\Windows\System32\calc.exe" --wait-title-re "^電卓$" --allow-actions
+pyselector launch --json --app calculator --allow-actions
+pyselector close  --json --window-handle 0x2E20F46 --allow-actions
+```
+
+`launch` は起動したプロセスの `pid` と、見つかった主ウィンドウの `handle` を返します。**この handle をそのまま以降のコマンドに渡せる**ことが `launch` の主な価値です。
+
+よく使うアプリは設定ファイルに書いておけます。
+
+```json
+{
+  "apps": {
+    "calculator": {
+      "exe": "calc.exe",
+      "args": [],
+      "window_title_re": "^電卓$",
+      "timeout": 30
+    }
+  }
+}
+```
+
+主ウィンドウの特定にはタイトルの正規表現を使ってください。`calc.exe` のように、起動したプロセスとは別のプロセスがウィンドウを出すアプリでは pid が一致しません。
+
+`--attach-existing` は、既に起動していれば起動せず接続します。
+
+`close` は既定でウィンドウに閉じるよう頼みます。`--force` はプロセスを終了させるため、保存していない作業を失う可能性があります。
+
+### `record`（記録とコード生成）
+
+記録中は、成功した `act` と成立した `expect` が 1 手順ずつ蓄積され、最後に **pywinauto だけで動くテスト**を書き出せます。**生成されたファイルは pyselector に依存しません。**
+
+```bash
+pyselector record start --name "計算結果の確認"
+# ... launch / act / expect を普段どおり実行 ...
+pyselector record show --json
+pyselector record stop --emit pytest --out tests/test_calc.py
+```
+
+| 記録する | 記録しない |
+| --- | --- |
+| 実際に実行した `act` | `act --dry-run` |
+| 成立した `expect` | 成立しなかった `expect` |
+| `launch` / `close` | `find` / `tree` / `inspect` / `shot` |
+
+探索は手順ではなく、テストに残す必要が無いため記録しません。成立しなかった判定を記録しないのは、生成コードに書き出せば必ず落ちる assert になるからです。
+
+記録中の `act` と `expect` は、解決済みの要素に対してセレクター候補の生成と評価まで行い、**評価済みの最良の候補**を記録します。CLI に渡した条件をそのままコードにしても良いセレクターになるとは限らないためです（`--text` は表示文言に、`--index` は並び順に依存します）。この追加コストは記録中だけで、記録していないときの `act` の速度は変わりません。
+
+適切な候補が見つからなかった場合は、生成コードにコメントと `NotImplementedError` を残します。**推測でそれらしいコードを出力しません。**
+
+生成コードに待機を入れたい場合は `expect --wait N` を使ってください。記録に無い待機を勝手に挿入することはありません。
+
+```bash
+pyselector record stop --emit pytest   # 既定。window フィクスチャ付きのテスト
+pyselector record stop --emit plain    # pytest に依存しない単一スクリプト
+pyselector record stop --emit none     # 記録を JSON のまま出す
+```
+
+記録はユーザーにつき 1 つです。デスクトップは共有資源であり、同時に 2 つの操作シナリオを記録することは原理的にできません。
+
+### `batch`（複数コマンドの一括実行）
+
+常駐モードが消したのはプロセス起動の約 0.55 秒ですが、AI エージェントにとっての実コストは **1 コマンド = 1 ツール呼び出しの往復**です。
+
+```bash
+pyselector batch --json steps.json
+cat steps.json | pyselector batch --json -
+```
+
+```json
+{
+  "steps": [
+    { "command": "act",    "args": ["--ref", "uia:7f3a2b:42", "--click", "--allow-actions"] },
+    { "command": "expect", "args": ["--window-handle", "0x2E20F46", "--auto-id", "dialog", "--exists", "--wait", "5"] }
+  ]
+}
+```
+
+各ステップは必ず `--json` で実行され、エンベロープがそのまま `steps[].result` に入ります。既定では最初の失敗で停止し、その終了コードを返します（`--continue-on-error` で最後まで走ります）。`batch` / `serve` / `install-skills` はステップに指定できません。
+
+**ステップ間の変数展開はありません。** 小さなテンプレート言語を発明すれば、その仕様・エラー・デバッグ手段を維持する必要が出ます。前のステップの結果を見て次を組み立てられるなら、その判断を貧弱な式言語に移す理由がありません。
+
 ### JSON の共通仕様
 
 `--json` の出力には必ず `schema_version` / `command` / `status` / `served` が含まれます。`served` は、その結果を常駐サーバーが返したかどうかです。
@@ -316,7 +476,9 @@ pyselector install-skills --claude
 
 ### 制限
 
-`act` 以外のコマンドは UI を読み取るだけで、アプリの状態を変えません。`act` が唯一の書き込み系コマンドで、上記の 2 段階の許可がなければ何も実行しません。
+状態を変えるのは `act` / `launch` / `close` の 3 つだけです。いずれも同じ 2 段階の許可（`.env` の `PYSELECTOR_ALLOW_ACTIONS=true` と `--allow-actions`）がなければ何も実行しません。関門を増やすと覚えることが増えるだけなので、**スイッチは 1 つのまま**にしています。
+
+`shot` と `record` はファイルを書きますが、アプリの状態は変えないため許可は要りません。
 
 `act` を有効にしていない場合、メニューを開く・タブを切り替えるといった操作が必要な画面は、あらかじめ人が表示させておく必要があります。
 
