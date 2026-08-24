@@ -4,6 +4,7 @@ import json
 from collections import Counter
 
 from pyselector.model.act_result import ActResult
+from pyselector.model.batch_result import BatchResult
 from pyselector.model.diff_result import BackendDiff
 from pyselector.model.element_info import ElementInfo
 from pyselector.model.expect_result import ExpectResult
@@ -78,6 +79,30 @@ def _wait_to_dict(outcome: WaitOutcome | None) -> dict[str, object]:
     if outcome is None:
         return {}
     return {"waited": outcome.rounded, "attempts": outcome.attempts, "timed_out": outcome.timed_out}
+
+
+def format_batch_result_json(result: BatchResult) -> str:
+    return _dump(
+        _envelope(
+            "batch",
+            result.status,
+            {
+                "requested": result.requested,
+                "completed": result.completed,
+                "failed_exit_code": result.failed_exit_code,
+                "steps": [
+                    {
+                        "index": step.index,
+                        "argv": list(step.argv),
+                        "exit_code": step.exit_code,
+                        "result": step.result,
+                        "output": step.output,
+                    }
+                    for step in result.steps
+                ],
+            },
+        )
+    )
 
 
 def format_shot_result_json(result: ShotResult) -> str:

@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections import Counter
 
 from pyselector.model.act_result import ActResult
+from pyselector.model.batch_result import BatchResult
 from pyselector.model.diff_result import BackendDiff
 from pyselector.model.element_info import ElementInfo
 from pyselector.model.expect_result import ExpectResult
@@ -221,6 +222,17 @@ def format_windows_result(result: WindowsResult, color: bool = False, include_he
         lines.append(f"    {format_handle(window.handle)} {quote_text(window.title)}{suffix}")
     if result.reached_limit:
         lines.append("[WARN] max-items に達したため、以降のウィンドウ表示を省略しました。")
+    return "\n".join(lines) + "\n"
+
+
+def format_batch_result(result: BatchResult, color: bool = False) -> str:
+    lines = [_heading("Batch", color, level=1)]
+    lines.append(f"    completed: {result.completed}/{result.requested}")
+    for step in result.steps:
+        status = "ok" if step.exit_code == 0 else f"exit {step.exit_code}"
+        lines.append(f"    [{step.index + 1}] {status}  {' '.join(step.argv)}")
+    if result.failed_exit_code:
+        lines.append(f"[WARN] 失敗したため以降のステップを実行していません（終了コード {result.failed_exit_code}）")
     return "\n".join(lines) + "\n"
 
 

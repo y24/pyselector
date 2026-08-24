@@ -9,6 +9,7 @@ from pyselector import __version__
 from pyselector.config import AppConfig, load_config
 from pyselector.install import SKILL_LABELS, install_skill
 from pyselector.commands.lifecycle import run_close, run_launch
+from pyselector.commands.batch import run_batch
 from pyselector.commands.record import run_record
 from pyselector.commands.shot import run_shot
 from pyselector.inspect_runner import (
@@ -106,6 +107,9 @@ def build_parser(config: AppConfig | None = None) -> argparse.ArgumentParser:
     expect = subparsers.add_parser("expect", help="Check a condition about the UI and report whether it holds")
     _add_expect_options(expect, config)
 
+    batch = subparsers.add_parser("batch", help="Run several pyselector commands in one process")
+    _add_batch_options(batch)
+
     shot = subparsers.add_parser("shot", help="Save a PNG of a window, an element, or the whole screen")
     _add_shot_options(shot, config)
 
@@ -137,7 +141,8 @@ def build_parser(config: AppConfig | None = None) -> argparse.ArgumentParser:
     for name, subparser in subparsers.choices.items():
         # launch / close をサーバーに送らない。起動したプロセスが常駐プロセスの
         # 配下になり、サーバーを止めたときの巻き添えが読みにくくなるため（設計 11 §12）。
-        if name not in ("serve", "install-skills", "record", "launch", "close", "shot"):
+        # batch はサーバーに送らない。各ステップが自分で判断すればよい。
+        if name not in ("serve", "install-skills", "record", "launch", "close", "shot", "batch"):
             _add_server_option(subparser)
     return parser
 
@@ -199,6 +204,8 @@ def main(argv: list[str] | None = None) -> int:
             else:
                 print(f"pyselector {__version__}")
             return 0
+        if args.command == "batch":
+            return run_batch(args)
         if args.command == "record":
             return run_record(args)
         if args.command == "shot":
@@ -511,6 +518,16 @@ def _add_note_option(parser: argparse.ArgumentParser) -> None:
         "--note",
         help="Label this step in the recording (ignored when not recording)",
     )
+
+
+def _add_batch_options(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("steps", help='JSON file with a "steps" array, or - to read standard input')
+    parser.add_argument(
+        "--continue-on-error",
+        action="store_true",
+        help="Run every step even after one fails (the default stops at the first failure)",
+    )
+    parser.add_argument("--json", action="store_true")
 
 
 def _add_shot_options(parser: argparse.ArgumentParser, config: AppConfig) -> None:
