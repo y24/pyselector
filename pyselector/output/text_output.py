@@ -11,6 +11,7 @@ from pyselector.model.hierarchy import HierarchyNode
 from pyselector.model.inspection_result import BackendInspection, InspectionResult, TreeResult
 from pyselector.model.lifecycle_result import CloseResult, LaunchResult
 from pyselector.model.selector_candidate import SelectorEvaluation
+from pyselector.model.shot_result import ShotResult
 from pyselector.model.target_window import TargetWindowInfo
 from pyselector.model.window_summary import WindowsResult
 from pyselector.output.formatters import format_handle, format_rectangle, format_value, quote_text
@@ -220,6 +221,22 @@ def format_windows_result(result: WindowsResult, color: bool = False, include_he
         lines.append(f"    {format_handle(window.handle)} {quote_text(window.title)}{suffix}")
     if result.reached_limit:
         lines.append("[WARN] max-items に達したため、以降のウィンドウ表示を省略しました。")
+    return "\n".join(lines) + "\n"
+
+
+def format_shot_result(result: ShotResult, color: bool = False) -> str:
+    lines = [_heading("Shot", color, level=1)]
+    lines.append(f"    path: {result.path}")
+    lines.append(f"    size: {result.width}x{result.height}")
+    lines.append(f"    origin: {result.origin[0]},{result.origin[1]}")
+    if result.target is not None:
+        lines.append(f"    target: {quote_text(result.target.window_text)}")
+    for annotation in result.annotations:
+        element = annotation.element
+        kind = element.control_type or element.class_name or "Element"
+        attrs = _element_attrs(element)
+        suffix = ("  " + attrs) if attrs else ""
+        lines.append(f"    [{annotation.index}] {kind:<7} {quote_text(element.window_text)}{suffix}")
     return "\n".join(lines) + "\n"
 
 

@@ -12,6 +12,7 @@ from pyselector.model.hierarchy import HierarchyNode
 from pyselector.model.inspection_result import BackendInspection, InspectionResult, TreeResult
 from pyselector.model.lifecycle_result import CloseResult, LaunchResult
 from pyselector.model.rectangle import RectangleInfo
+from pyselector.model.shot_result import ShotResult
 from pyselector.model.selector_candidate import SelectorCandidate, SelectorEvaluation, SelectorStep
 from pyselector.model.target_window import TargetWindowInfo
 from pyselector.model.window_summary import WindowSummary, WindowsResult
@@ -77,6 +78,31 @@ def _wait_to_dict(outcome: WaitOutcome | None) -> dict[str, object]:
     if outcome is None:
         return {}
     return {"waited": outcome.rounded, "attempts": outcome.attempts, "timed_out": outcome.timed_out}
+
+
+def format_shot_result_json(result: ShotResult) -> str:
+    return _dump(
+        _envelope(
+            "shot",
+            result.status,
+            {
+                "path": result.path,
+                "width": result.width,
+                "height": result.height,
+                "origin": {"x": result.origin[0], "y": result.origin[1]},
+                "backend": result.backend,
+                "target": _element_to_dict(result.target),
+                "annotations": [
+                    {
+                        "index": annotation.index,
+                        "element": _element_to_dict(annotation.element, compact=True),
+                        "rectangle": _rectangle_to_dict(annotation.element.rectangle),
+                    }
+                    for annotation in result.annotations
+                ],
+            },
+        )
+    )
 
 
 def format_launch_result_json(result: LaunchResult, recorded: RecordedStep | None = None) -> str:

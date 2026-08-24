@@ -10,6 +10,7 @@ from pyselector.config import AppConfig, load_config
 from pyselector.install import SKILL_LABELS, install_skill
 from pyselector.commands.lifecycle import run_close, run_launch
 from pyselector.commands.record import run_record
+from pyselector.commands.shot import run_shot
 from pyselector.inspect_runner import (
     run_act,
     run_diff,
@@ -20,6 +21,7 @@ from pyselector.inspect_runner import (
     run_windows,
 )
 from pyselector.output.json_output import format_error_json, format_version_json
+from pyselector.screenshot import ScreenshotError
 from pyselector.utils.errors import (
     EXIT_ARGUMENT_ERROR,
     EXIT_INTERRUPTED,
@@ -104,6 +106,9 @@ def build_parser(config: AppConfig | None = None) -> argparse.ArgumentParser:
     expect = subparsers.add_parser("expect", help="Check a condition about the UI and report whether it holds")
     _add_expect_options(expect, config)
 
+    shot = subparsers.add_parser("shot", help="Save a PNG of a window, an element, or the whole screen")
+    _add_shot_options(shot, config)
+
     launch = subparsers.add_parser("launch", help="Start an application and wait for its main window (disabled by default)")
     _add_launch_options(launch, config)
 
@@ -132,7 +137,7 @@ def build_parser(config: AppConfig | None = None) -> argparse.ArgumentParser:
     for name, subparser in subparsers.choices.items():
         # launch / close をサーバーに送らない。起動したプロセスが常駐プロセスの
         # 配下になり、サーバーを止めたときの巻き添えが読みにくくなるため（設計 11 §12）。
-        if name not in ("serve", "install-skills", "record", "launch", "close"):
+        if name not in ("serve", "install-skills", "record", "launch", "close", "shot"):
             _add_server_option(subparser)
     return parser
 
@@ -196,6 +201,10 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         if args.command == "record":
             return run_record(args)
+        if args.command == "shot":
+            _validate_shot_target(args, parser)
+            args.only_visible = _resolve_only_visible(args.only_visible, args.include_hidden, config.find.only_visible)
+            return run_shot(args)
         if args.command in ("launch", "close"):
             if args.command == "close":
                 _validate_close_target(args, parser)
@@ -333,6 +342,7 @@ def _run_install_skills(args: argparse.Namespace, parser: argparse.ArgumentParse
 
 _ERROR_CODES: list[tuple[type[PySelectorError], str]] = [
     (ArgumentError, "argument_error"),
+    (ScreenshotError, "screenshot_failed"),
     (StaleRefError, "stale_ref"),
     (ServerUnavailableError, "server_unavailable"),
     (ActionNotAllowedError, "action_not_allowed"),
@@ -501,6 +511,51 @@ def _add_note_option(parser: argparse.ArgumentParser) -> None:
         "--note",
         help="Label this step in the recording (ignored when not recording)",
     )
+
+
+def _add_shot_options(parser: argparse.ArgumentParser, config: AppConfig) -> None:
+    parser.add_argument("--out", required=True, metavar="PATH", help="Where to write the PNG")
+    parser.add_argument("--force", action="store_true", help="Overwrite an existing file")
+    parser.add_argument("--screen", action="store_true", help="Capture the whole screen instead of a window")
+    parser.add_argument("--window-handle", type=_handle, help="Capture this window")
+    parser.add_argument("--window-title", help="Capture the window matched by title")
+    parser.add_argument("--at", type=_point, default=None, metavar="X,Y", help="Capture the element at this coordinate")
+    _add_ref_option(parser)
+    parser.add_argument("--title-re", action="store_true", help="Treat --window-title as a regular expression")
+    parser.add_argument(
+        "--annotate",
+        action="store_true",
+        help="Draw numbered boxes over the elements matching the conditions below",
+    )
+    parser.add_argument("--text", help="Match window_text (case-insensitive substring)")
+    parser.add_argument("--text-re", help="Match window_text by regular expression")
+    parser.add_argument("--auto-id", help="Match automation_id exactly")
+    parser.add_argument("--control-type", help="Match control_type (case-insensitive)")
+    parser.add_argument("--class-name", help="Match class_name exactly")
+    parser.add_argument("--enabled-only", action="store_true", help="Keep only enabled elements")
+    parser.add_argument("--backend", choices=["win32", "uia"], default=config.act.backend)
+    parser.add_argument("--scope", choices=["window", "desktop"], default=config.find.scope)
+    parser.add_argument("--depth", type=_non_negative_int, default=config.find.depth)
+    parser.add_argument("--max-items", type=_positive_int, default=config.find.max_items)
+    parser.add_argument("--limit", type=_positive_int, default=config.find.limit)
+    parser.add_argument("--only-visible", action="store_true", default=None)
+    parser.add_argument("--include-hidden", action="store_true")
+    parser.add_argument("--json", action="store_true")
+
+
+def _validate_shot_target(args: argparse.Namespace, parser: argparse.ArgumentParser) -> None:
+    targets = [
+        args.screen,
+        args.window_handle is not None,
+        args.window_title is not None,
+        args.at is not None,
+        args.ref is not None,
+    ]
+    if sum(1 for target in targets if target) != 1:
+        parser.error("shot requires exactly one of --screen, --window-handle, --window-title, --at or --ref")
+    if args.annotate and args.screen:
+        # 画面全体には探索の起点が無い。注釈をつけるならウィンドウを指すこと。
+        parser.error("--annotate needs a window; it cannot be combined with --screen")
 
 
 def _add_launch_options(parser: argparse.ArgumentParser, config: AppConfig) -> None:
