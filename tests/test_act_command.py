@@ -105,6 +105,9 @@ def _args(**overrides):
         env_allow_actions=True,
         dry_run=False,
         diff=False,
+        settle=None,
+        poll_interval=0.0,
+        ref=None,
         json=True,
     )
     base.update(overrides)

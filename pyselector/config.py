@@ -90,6 +90,16 @@ class ServerConfig:
 
 
 @dataclass(frozen=True)
+class WaitConfig:
+    """待機のポーリング間隔。
+
+    UI の走査そのものに 1 秒近くかかるため、これより詰めても試行回数が増えるだけ。
+    """
+
+    poll_interval: float = 0.3
+
+
+@dataclass(frozen=True)
 class SelectorConfig:
     evaluation_max_items: int = 10
     found_index_trial_count: int = 3
@@ -103,6 +113,7 @@ class AppConfig:
     find: FindConfig = FindConfig()
     expect: ExpectConfig = ExpectConfig()
     act: ActConfig = ActConfig()
+    wait: WaitConfig = WaitConfig()
     selector: SelectorConfig = SelectorConfig()
     server: ServerConfig = ServerConfig()
     loaded_path: Path | None = None
@@ -138,7 +149,7 @@ def _resolve_config_path() -> Path | None:
 
 
 def _build_config(raw: dict[str, Any], path: Path) -> AppConfig:
-    allowed_sections = {"inspect", "tree", "windows", "find", "expect", "act", "selector", "server"}
+    allowed_sections = {"inspect", "tree", "windows", "find", "expect", "act", "wait", "selector", "server"}
     _reject_unknown_keys(raw, allowed_sections, "config", path)
     inspect = _section(raw, "inspect", path)
     tree = _section(raw, "tree", path)
@@ -146,6 +157,7 @@ def _build_config(raw: dict[str, Any], path: Path) -> AppConfig:
     find = _section(raw, "find", path)
     expect = _section(raw, "expect", path)
     act = _section(raw, "act", path)
+    wait = _section(raw, "wait", path)
     selector = _section(raw, "selector", path)
     server = _section(raw, "server", path)
     return AppConfig(
@@ -193,6 +205,9 @@ def _build_config(raw: dict[str, Any], path: Path) -> AppConfig:
             max_items=_positive_int(act, "max_items", 200, path),
             only_visible=_bool(act, "only_visible", True, path),
         ),
+        wait=WaitConfig(
+            poll_interval=_positive_float(wait, "poll_interval", 0.3, path),
+        ),
         selector=SelectorConfig(
             evaluation_max_items=_positive_int(selector, "evaluation_max_items", 10, path),
             found_index_trial_count=_positive_int(selector, "found_index_trial_count", 3, path),
@@ -229,6 +244,8 @@ def _section(raw: dict[str, Any], key: str, path: Path) -> dict[str, Any]:
                 f"write {ALLOW_ACTIONS_VAR}=true in {ENV_FILE_NAME} instead: {path}"
             )
         allowed = {"backend", "depth", "max_items", "only_visible"}
+    elif key == "wait":
+        allowed = {"poll_interval"}
     elif key == "server":
         allowed = {"enabled", "auto_start", "idle_timeout", "max_refs", "connect_timeout"}
     else:
@@ -264,6 +281,13 @@ def _optional_positive_int(raw: dict[str, Any], key: str, default: int | None, p
     if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
         raise ArgumentError(f"config value must be null or a positive integer: {key}: {path}")
     return value
+
+
+def _positive_float(raw: dict[str, Any], key: str, default: float, path: Path) -> float:
+    value = raw.get(key, default)
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or value <= 0:
+        raise ArgumentError(f"config value must be a positive number: {key}: {path}")
+    return float(value)
 
 
 def _choice(raw: dict[str, Any], key: str, default: str, choices: set[str], path: Path) -> str:

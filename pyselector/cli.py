@@ -188,6 +188,7 @@ def main(argv: list[str] | None = None) -> int:
             _resolve_act_action(args, parser)
             args.only_visible = _resolve_only_visible(args.only_visible, args.include_hidden, config.act.only_visible)
             args.env_allow_actions = config.act.allow_actions
+            args.poll_interval = config.wait.poll_interval
             return run_act(args)
         if args.command == "tree":
             _validate_visible_options(args, parser)
@@ -205,12 +206,15 @@ def main(argv: list[str] | None = None) -> int:
             args.only_visible = _resolve_only_visible(args.only_visible, args.include_hidden, config.find.only_visible)
             args.selector_evaluation_max_items = config.selector.evaluation_max_items
             args.found_index_trial_count = config.selector.found_index_trial_count
+            args.poll_interval = config.wait.poll_interval
+            _validate_wait_options(args, parser)
             return run_find(args)
         if args.command == "expect":
             _validate_visible_options(args, parser)
             _validate_find_target(args, parser, command="expect")
             _resolve_expectation(args, parser)
             args.only_visible = _resolve_only_visible(args.only_visible, args.include_hidden, config.expect.only_visible)
+            args.poll_interval = config.wait.poll_interval
             return run_expect(args)
         _validate_visible_options(args, parser)
         _validate_inspect_target(args, parser)
@@ -408,6 +412,13 @@ def _add_find_options(parser: argparse.ArgumentParser, config: AppConfig) -> Non
         action="store_true",
         help="Read value / checked / selected state for the matches (costs one UIA call per element)",
     )
+    parser.add_argument("--wait", type=_positive_number, metavar="SEC", help="Retry until something matches")
+    parser.add_argument(
+        "--wait-gone",
+        type=_positive_number,
+        metavar="SEC",
+        help="Retry until nothing matches any more",
+    )
     parser.add_argument("--only-visible", action="store_true", default=None)
     parser.add_argument("--include-hidden", action="store_true")
     parser.add_argument("--detail", action="store_true")
@@ -441,6 +452,12 @@ def _add_act_options(parser: argparse.ArgumentParser, config: AppConfig) -> None
     parser.add_argument("--allow-actions", action="store_true", help="Required to actually perform the action")
     parser.add_argument("--dry-run", action="store_true", help="Resolve the target and report it without acting")
     parser.add_argument("--diff", action="store_true", help="Report what changed in the window around the action")
+    parser.add_argument(
+        "--settle",
+        type=_positive_number,
+        metavar="SEC",
+        help="After acting, wait until the window stops changing (at most SEC seconds)",
+    )
     parser.add_argument("--backend", choices=["win32", "uia"], default=config.act.backend)
     parser.add_argument("--depth", type=_non_negative_int, default=config.act.depth)
     parser.add_argument("--max-items", type=_positive_int, default=config.act.max_items)
@@ -459,6 +476,7 @@ def _add_expect_options(parser: argparse.ArgumentParser, config: AppConfig) -> N
     parser.add_argument("--depth", type=_non_negative_int, default=config.expect.depth)
     parser.add_argument("--max-items", type=_positive_int, default=config.expect.max_items)
     parser.add_argument("--limit", type=_positive_int, default=config.expect.limit)
+    parser.add_argument("--wait", type=_positive_number, metavar="SEC", help="Retry until the expectation holds")
     parser.add_argument("--only-visible", action="store_true", default=None)
     parser.add_argument("--include-hidden", action="store_true")
     parser.add_argument("--compact", action="store_true", help="Reduce fields per element")
@@ -527,6 +545,11 @@ def _validate_act_target(args: argparse.Namespace, parser: argparse.ArgumentPars
 def _has_element_conditions(args: argparse.Namespace) -> bool:
     named = ("text", "text_re", "auto_id", "control_type", "class_name")
     return any(getattr(args, name) is not None for name in named) or args.enabled_only or args.index is not None
+
+
+def _validate_wait_options(args: argparse.Namespace, parser: argparse.ArgumentParser) -> None:
+    if getattr(args, "wait", None) is not None and getattr(args, "wait_gone", None) is not None:
+        parser.error("--wait and --wait-gone cannot be used together")
 
 
 def _validate_visible_options(args: argparse.Namespace, parser: argparse.ArgumentParser) -> None:
@@ -637,6 +660,13 @@ def _non_negative_int(value: str) -> int:
 
 def _positive_int(value: str) -> int:
     parsed = int(value)
+    if parsed <= 0:
+        raise argparse.ArgumentTypeError("must be positive")
+    return parsed
+
+
+def _positive_number(value: str) -> float:
+    parsed = float(value)
     if parsed <= 0:
         raise argparse.ArgumentTypeError("must be positive")
     return parsed

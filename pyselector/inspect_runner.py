@@ -62,6 +62,7 @@ from pyselector.utils.errors import (
 )
 from pyselector.utils.logging import info_log
 from pyselector.utils.process import get_process_name
+from pyselector.wait import DEFAULT_POLL_INTERVAL, poll_until, poll_until_stable
 
 
 DEFAULT_SELECTOR_EVALUATION_MAX_ITEMS = 10
@@ -415,18 +416,30 @@ def run_find(args: Namespace) -> int:
     setup_dpi_awareness()
 
     with_state = getattr(args, "with_state", False)
-    results = search_elements(
-        args,
-        log,
-        backends=_resolve_backends(args.backend, getattr(args, "ref", None)),
-        with_selectors=getattr(args, "with_selectors", False),
-        with_state=with_state,
-        progress=None if json_output else color,
+    backends = _resolve_backends(args.backend, getattr(args, "ref", None))
+
+    def attempt() -> list[FindResult]:
+        return search_elements(
+            args,
+            log,
+            backends=backends,
+            with_selectors=getattr(args, "with_selectors", False),
+            with_state=with_state,
+            progress=None if json_output else color,
+        )
+
+    results, outcome = poll_until(
+        attempt,
+        _find_wait_predicate(args),
+        timeout=getattr(args, "wait", None) or getattr(args, "wait_gone", None),
+        poll_interval=getattr(args, "poll_interval", DEFAULT_POLL_INTERVAL),
     )
+    if outcome.attempts > 1:
+        log(f"待機しました。{outcome.rounded}秒 / {outcome.attempts}回")
 
     compact = getattr(args, "compact", False)
     output = (
-        format_find_results_json(results, compact=compact, with_state=with_state)
+        format_find_results_json(results, compact=compact, with_state=with_state, outcome=outcome)
         if json_output
         else "".join(
             format_find_result(result, args.detail, color, include_heading=index == 0)
@@ -437,6 +450,20 @@ def run_find(args: Namespace) -> int:
     if not any(result.status == "success" for result in results):
         return 1
     return 0 if any(result.matches for result in results) else 1
+
+
+def _find_wait_predicate(args: Namespace) -> Callable[[list[FindResult]], bool]:
+    """待機の打ち切り条件。
+
+    ``--wait`` はどれかの backend が一致を得たら終わり、``--wait-gone`` は
+    すべての backend が 0 件になったら終わり。どちらも指定が無ければ、
+    最初の 1 回で必ず終わる。
+    """
+    if getattr(args, "wait_gone", None):
+        return lambda results: not any(result.matches for result in results)
+    if getattr(args, "wait", None):
+        return lambda results: any(result.matches for result in results)
+    return lambda results: True
 
 
 def search_elements(
@@ -513,9 +540,18 @@ def run_expect(args: Namespace) -> int:
         info_log("pyselector started", color)
     setup_dpi_awareness()
 
-    result = evaluate_expectation(args, log, progress=None if json_output else color)
+    result, outcome = poll_until(
+        lambda: evaluate_expectation(args, log, progress=None if json_output else color),
+        # 判定できなかった（status=error）ものを待ち続けても好転しないため、
+        # 成立したときと同じく打ち切る。
+        lambda item: item.satisfied or item.status != "success",
+        timeout=getattr(args, "wait", None),
+        poll_interval=getattr(args, "poll_interval", DEFAULT_POLL_INTERVAL),
+    )
+    if outcome.attempts > 1:
+        log(f"待機しました。{outcome.rounded}秒 / {outcome.attempts}回")
     output = (
-        format_expect_result_json(result, compact=getattr(args, "compact", False))
+        format_expect_result_json(result, compact=getattr(args, "compact", False), outcome=outcome)
         if json_output
         else format_expect_result(result, color)
     )
@@ -680,9 +716,28 @@ def run_act(args: Namespace) -> int:
         except Exception:
             element_after = None
 
+    settle = getattr(args, "settle", None)
+    settle_outcome = None
+    settled_nodes: list[Any] | None = None
+    settle_handle = target_window.handle
+    if performed and settle and settle_handle is not None:
+        log(f"{backend}: 画面が落ち着くまで待機中です... (最大 {settle}秒)")
+        settled_nodes, settle_outcome = poll_until_stable(
+            lambda: _snapshot_nodes(backend, settle_handle, args),
+            timeout=settle,
+            poll_interval=getattr(args, "poll_interval", DEFAULT_POLL_INTERVAL),
+        )
+        state = "変化が止まりませんでした" if settle_outcome.timed_out else "落ち着きました"
+        log(f"{backend}: {state}（{settle_outcome.rounded}秒 / {settle_outcome.attempts}回）")
+
     if diff_handle is not None and performed:
-        log(f"{backend}: 操作後のUI要素ツリーを取得中です...")
-        after_nodes = _snapshot_nodes(backend, diff_handle, args)
+        # --settle と併用したときは、安定した後のツリーをそのまま操作後として使う。
+        # 取り直すと、待った意味が薄れるうえ余分な走査が 1 回増える。
+        if settled_nodes is not None:
+            after_nodes = settled_nodes
+        else:
+            log(f"{backend}: 操作後のUI要素ツリーを取得中です...")
+            after_nodes = _snapshot_nodes(backend, diff_handle, args)
         diff_result = diff_nodes(backend, before_nodes, after_nodes)
 
     result = ActResult(
@@ -697,7 +752,11 @@ def run_act(args: Namespace) -> int:
         element_after=element_after,
         diff=diff_result,
     )
-    output = format_act_result_json(result) if json_output else format_act_result(result, color)
+    output = (
+        format_act_result_json(result, outcome=settle_outcome)
+        if json_output
+        else format_act_result(result, color)
+    )
     print(output, end="")
     return 0
 

@@ -15,6 +15,7 @@ from pyselector.model.selector_candidate import SelectorCandidate, SelectorEvalu
 from pyselector.model.target_window import TargetWindowInfo
 from pyselector.model.window_summary import WindowSummary, WindowsResult
 from pyselector.server import session
+from pyselector.wait import WaitOutcome
 
 #: v2 で全コマンドのエンベロープに served が現れ、サーバー経由時は要素に ref が付く。
 #: v1 の上位互換で、既存キーの削除・改名はしていない（設計 10）。
@@ -60,17 +61,27 @@ def format_find_results_json(
     results: list[FindResult],
     compact: bool = False,
     with_state: bool = False,
+    outcome: WaitOutcome | None = None,
 ) -> str:
-    return _dump(
-        _envelope(
-            "find",
-            _overall_status(results),
-            {"results": [_find_result_to_dict(result, compact, with_state) for result in results]},
-        )
-    )
+    payload: dict[str, object] = {
+        "results": [_find_result_to_dict(result, compact, with_state) for result in results]
+    }
+    payload.update(_wait_to_dict(outcome))
+    return _dump(_envelope("find", _overall_status(results), payload))
 
 
-def format_expect_result_json(result: ExpectResult, compact: bool = False) -> str:
+def _wait_to_dict(outcome: WaitOutcome | None) -> dict[str, object]:
+    """待った実績。1 回で決まったのか粘ったのかが、生成コードの timeout の根拠になる。"""
+    if outcome is None:
+        return {}
+    return {"waited": outcome.rounded, "attempts": outcome.attempts, "timed_out": outcome.timed_out}
+
+
+def format_expect_result_json(
+    result: ExpectResult,
+    compact: bool = False,
+    outcome: WaitOutcome | None = None,
+) -> str:
     """判定の結果を返す。
 
     satisfied は「判定が成立したか」、status は「判定を実行できたか」であり、
@@ -92,12 +103,13 @@ def format_expect_result_json(result: ExpectResult, compact: bool = False) -> st
                 "results": [
                     _find_result_to_dict(item, compact, with_state=True) for item in result.results
                 ],
+                **_wait_to_dict(outcome),
             },
         )
     )
 
 
-def format_act_result_json(result: ActResult) -> str:
+def format_act_result_json(result: ActResult, outcome: WaitOutcome | None = None) -> str:
     point = result.point
     payload: dict[str, object] = {
         "action": result.action,
@@ -111,6 +123,12 @@ def format_act_result_json(result: ActResult) -> str:
         "target": _element_to_dict(result.target, with_state=True),
         "element_after": _element_to_dict(result.element_after, with_state=True),
     }
+    if outcome is not None:
+        payload["settle"] = {
+            "waited": outcome.rounded,
+            "attempts": outcome.attempts,
+            "timed_out": outcome.timed_out,
+        }
     if result.diff is not None:
         payload["diff"] = _backend_diff_to_dict(result.diff)
     return _dump(_envelope("act", result.status, payload))
