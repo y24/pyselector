@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from pyselector.model.element_info import ElementInfo
 from pyselector.model.find_result import FindResult
 
 
@@ -45,3 +46,5 @@ class ExpectResult:
     results: list[FindResult] = field(default_factory=list)
     status: str = "success"
     message: str | None = None
+    #: 一意に定まった対象。記録がセレクターを確定するために使う。出力には載せない。
+    target: ElementInfo | None = None

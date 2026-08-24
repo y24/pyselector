@@ -4,7 +4,14 @@ from argparse import Namespace
 from typing import Callable
 
 from pyselector.commands import common
-from pyselector.commands.common import _candidate_hint, _info_logger, _use_color
+from pyselector.commands.common import (
+    _build_backend_inspection,
+    _candidate_hint,
+    _element_center,
+    _info_logger,
+    _selector_options_from_args,
+    _use_color,
+)
 from pyselector.commands.find import search_elements
 from pyselector.model.element_info import ElementInfo
 from pyselector.model.expect_result import (
@@ -16,10 +23,13 @@ from pyselector.model.expect_result import (
 from pyselector.model.find_result import FindResult
 from pyselector.output.json_output import format_expect_result_json
 from pyselector.output.text_output import format_expect_result
+from pyselector.record import capture as record_capture
+from pyselector.record import store as record_store
 from pyselector.server.refs import ref_backend
 from pyselector.utils.errors import EXIT_EXPECTATION_FAILED, AmbiguousTargetError, ElementNotFoundError
 from pyselector.utils.logging import info_log
 from pyselector.wait import DEFAULT_POLL_INTERVAL, poll_until
+
 
 def run_expect(args: Namespace) -> int:
     color = _use_color()
@@ -29,8 +39,9 @@ def run_expect(args: Namespace) -> int:
         info_log("pyselector started", color)
     common.setup_dpi_awareness()
 
+    inspectors: dict[str, object] = {}
     result, outcome = poll_until(
-        lambda: evaluate_expectation(args, log, progress=None if json_output else color),
+        lambda: evaluate_expectation(args, log, progress=None if json_output else color, inspectors=inspectors),
         # 判定できなかった（status=error）ものを待ち続けても好転しないため、
         # 成立したときと同じく打ち切る。
         lambda item: item.satisfied or item.status != "success",
@@ -39,8 +50,17 @@ def run_expect(args: Namespace) -> int:
     )
     if outcome.attempts > 1:
         log(f"待機しました。{outcome.rounded}秒 / {outcome.attempts}回")
+
+    recorded = None
+    if result.satisfied:
+        recorded = _record(args, result, log, inspectors)
+        if recorded is not None:
+            log(f"記録しました。手順 {recorded.seq}")
+
     output = (
-        format_expect_result_json(result, compact=getattr(args, "compact", False), outcome=outcome)
+        format_expect_result_json(
+            result, compact=getattr(args, "compact", False), outcome=outcome, recorded=recorded
+        )
         if json_output
         else format_expect_result(result, color)
     )
@@ -50,10 +70,48 @@ def run_expect(args: Namespace) -> int:
     return 0 if result.satisfied else EXIT_EXPECTATION_FAILED
 
 
+def _record(
+    args: Namespace,
+    result: ExpectResult,
+    log: Callable[[str], None],
+    inspectors: dict[str, object],
+):
+    """成立した判定を記録する。対象が定まっていればそこからセレクターを起こす。
+
+    記録していないときに対象ウィンドウを引き直す無駄を避けるため、真っ先に
+    記録の有無を見る。
+    """
+    if not record_store.is_recording():
+        return None
+    backend = ref_backend(args.ref) if getattr(args, "ref", None) is not None else args.backend
+    target = result.target
+    inspector = inspectors.get(backend)
+    target_window = None
+    build_inspection = None
+    if target is not None and inspector is not None:
+        target_window = inspector.get_target_window(target)
+        build_inspection = lambda: _build_backend_inspection(  # noqa: E731
+            backend, inspector, target, _element_center(target), _selector_options_from_args(args), log
+        )
+    if target_window is None:
+        # 0 件を確かめた判定には対象要素が無い。探索の起点だったウィンドウを使う。
+        # ここを空のままにすると、生成コードが接続先を書けなくなる。
+        target_window = _root_window(result)
+    return record_capture.record_expect(args, backend, target, target_window, build_inspection, log)
+
+
+def _root_window(result: ExpectResult):
+    for item in result.results:
+        if item.root is not None:
+            return item.root
+    return None
+
+
 def evaluate_expectation(
     args: Namespace,
     log: Callable[[str], None],
     progress: bool | None = None,
+    inspectors: dict[str, object] | None = None,
 ) -> ExpectResult:
     """1 回だけ探索し、判定を下す。"""
     kind = args.expectation
@@ -64,6 +122,7 @@ def evaluate_expectation(
         backends=[backend],
         with_state=kind in STATE_KINDS,
         progress=progress,
+        inspectors=inspectors,
     )
     result = results[0]
     if result.status != "success":
@@ -84,6 +143,9 @@ def evaluate_expectation(
             satisfied=_is_satisfied(expectation),
             matched=matched,
             results=results,
+            # 件数の判定でも、対象が 1 件に定まっていればその要素からセレクターを
+            # 起こせる。0 件のときは None のままで、探索条件から組み立てる。
+            target=result.matches[0].element if len(result.matches) == 1 else None,
         )
 
     target = _pick_unique_target(result, args)
@@ -93,6 +155,7 @@ def evaluate_expectation(
         satisfied=_is_satisfied(expectation),
         matched=matched,
         results=results,
+        target=target,
     )
 
 

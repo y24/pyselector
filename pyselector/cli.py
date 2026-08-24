@@ -8,6 +8,7 @@ from pathlib import Path
 from pyselector import __version__
 from pyselector.config import AppConfig, load_config
 from pyselector.install import SKILL_LABELS, install_skill
+from pyselector.commands.record import run_record
 from pyselector.inspect_runner import (
     run_act,
     run_diff,
@@ -42,6 +43,9 @@ from pyselector.utils.runtime_warnings import configure_runtime_warnings
 #: --server の選択肢。pyselector.server.client と同じ値を、import を伴わずに使うために置く。
 #: 薄いクライアントの起動コストを増やさないための措置で、値の一致はテストで固定している。
 SERVER_MODES = ("auto", "off", "require")
+
+#: record stop の生成形式。pyselector.record.codegen と同じ値を、import を伴わずに使う。
+EMIT_FORMATS = ("pytest", "plain", "none")
 
 _LOGO_PATH = Path(__file__).resolve().parent.parent / "assets" / "logo.txt"
 _RESET = "\033[0m"
@@ -99,6 +103,9 @@ def build_parser(config: AppConfig | None = None) -> argparse.ArgumentParser:
     expect = subparsers.add_parser("expect", help="Check a condition about the UI and report whether it holds")
     _add_expect_options(expect, config)
 
+    record = subparsers.add_parser("record", help="Record acts and expectations, then emit pywinauto code")
+    _add_record_options(record)
+
     diff = subparsers.add_parser("diff", help="Compare two tree --json outputs")
     diff.add_argument("before", type=Path, help="tree --json output taken before")
     diff.add_argument("after", type=Path, help="tree --json output taken after")
@@ -116,7 +123,7 @@ def build_parser(config: AppConfig | None = None) -> argparse.ArgumentParser:
     version.add_argument("--json", action="store_true")
 
     for name, subparser in subparsers.choices.items():
-        if name not in ("serve", "install-skills"):
+        if name not in ("serve", "install-skills", "record"):
             _add_server_option(subparser)
     return parser
 
@@ -178,6 +185,8 @@ def main(argv: list[str] | None = None) -> int:
             else:
                 print(f"pyselector {__version__}")
             return 0
+        if args.command == "record":
+            return run_record(args)
         if args.command == "install-skills":
             return _run_install_skills(args, parser)
         if args.command == "diff":
@@ -189,6 +198,8 @@ def main(argv: list[str] | None = None) -> int:
             args.only_visible = _resolve_only_visible(args.only_visible, args.include_hidden, config.act.only_visible)
             args.env_allow_actions = config.act.allow_actions
             args.poll_interval = config.wait.poll_interval
+            args.selector_evaluation_max_items = config.selector.evaluation_max_items
+            args.found_index_trial_count = config.selector.found_index_trial_count
             return run_act(args)
         if args.command == "tree":
             _validate_visible_options(args, parser)
@@ -215,6 +226,8 @@ def main(argv: list[str] | None = None) -> int:
             _resolve_expectation(args, parser)
             args.only_visible = _resolve_only_visible(args.only_visible, args.include_hidden, config.expect.only_visible)
             args.poll_interval = config.wait.poll_interval
+            args.selector_evaluation_max_items = config.selector.evaluation_max_items
+            args.found_index_trial_count = config.selector.found_index_trial_count
             return run_expect(args)
         _validate_visible_options(args, parser)
         _validate_inspect_target(args, parser)
@@ -458,12 +471,44 @@ def _add_act_options(parser: argparse.ArgumentParser, config: AppConfig) -> None
         metavar="SEC",
         help="After acting, wait until the window stops changing (at most SEC seconds)",
     )
+    _add_note_option(parser)
     parser.add_argument("--backend", choices=["win32", "uia"], default=config.act.backend)
     parser.add_argument("--depth", type=_non_negative_int, default=config.act.depth)
     parser.add_argument("--max-items", type=_positive_int, default=config.act.max_items)
     parser.add_argument("--only-visible", action="store_true", default=None)
     parser.add_argument("--include-hidden", action="store_true")
     parser.add_argument("--json", action="store_true")
+
+
+def _add_note_option(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--note",
+        help="Label this step in the recording (ignored when not recording)",
+    )
+
+
+def _add_record_options(parser: argparse.ArgumentParser) -> None:
+    sub = parser.add_subparsers(dest="record_command", required=True)
+
+    start = sub.add_parser("start", help="Begin recording acts and expectations")
+    start.add_argument("--name", required=True, help="Name of the recording; becomes the test name")
+    start.add_argument("--force", action="store_true", help="Discard a recording already in progress")
+    start.add_argument("--json", action="store_true")
+
+    status = sub.add_parser("status", help="Report whether a recording is in progress")
+    status.add_argument("--json", action="store_true")
+
+    show = sub.add_parser("show", help="List what has been recorded so far")
+    show.add_argument("--json", action="store_true")
+
+    stop = sub.add_parser("stop", help="Finish the recording and emit code")
+    stop.add_argument("--emit", choices=list(EMIT_FORMATS), default="pytest")
+    stop.add_argument("--out", help="Write the generated code here instead of standard output")
+    stop.add_argument("--force", action="store_true", help="Overwrite an existing output file")
+    stop.add_argument("--json", action="store_true")
+
+    cancel = sub.add_parser("cancel", help="Discard the recording without generating code")
+    cancel.add_argument("--json", action="store_true")
 
 
 def _add_expect_options(parser: argparse.ArgumentParser, config: AppConfig) -> None:
@@ -480,6 +525,7 @@ def _add_expect_options(parser: argparse.ArgumentParser, config: AppConfig) -> N
     parser.add_argument("--only-visible", action="store_true", default=None)
     parser.add_argument("--include-hidden", action="store_true")
     parser.add_argument("--compact", action="store_true", help="Reduce fields per element")
+    _add_note_option(parser)
     parser.add_argument("--json", action="store_true")
 
     checks = parser.add_argument_group("expectations")

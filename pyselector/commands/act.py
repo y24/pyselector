@@ -5,11 +5,14 @@ from typing import Any, Callable
 
 from pyselector.commands import common
 from pyselector.commands.common import (
+    _build_backend_inspection,
     _candidate_hint,
+    _element_center,
     _has_element_conditions,
     _info_logger,
     _matches_find_predicates,
     _resolve_find_root,
+    _selector_options_from_args,
     _snapshot_nodes,
     _sort_find_elements,
     _use_color,
@@ -18,6 +21,7 @@ from pyselector.diff import diff_nodes
 from pyselector.model.act_result import ActResult
 from pyselector.model.element_info import ElementInfo
 from pyselector.output.json_output import format_act_result_json
+from pyselector.record import capture as record_capture
 from pyselector.output.text_output import format_act_result
 from pyselector.server import session as server_session
 from pyselector.server.refs import ref_backend
@@ -90,6 +94,23 @@ def run_act(args: Namespace) -> int:
             after_nodes = _snapshot_nodes(backend, diff_handle, args)
         diff_result = diff_nodes(backend, before_nodes, after_nodes)
 
+    recorded = None
+    if performed:
+        recorded = record_capture.record_act(
+            args,
+            backend,
+            inspector,
+            target,
+            target_window,
+            method,
+            lambda: _build_backend_inspection(
+                backend, inspector, target, _element_center(target), _selector_options_from_args(args), log
+            ),
+            log,
+        )
+        if recorded is not None:
+            log(f"記録しました。手順 {recorded.seq}")
+
     result = ActResult(
         backend=backend,
         action=action,
@@ -103,7 +124,7 @@ def run_act(args: Namespace) -> int:
         diff=diff_result,
     )
     output = (
-        format_act_result_json(result, outcome=settle_outcome)
+        format_act_result_json(result, outcome=settle_outcome, recorded=recorded)
         if json_output
         else format_act_result(result, color)
     )

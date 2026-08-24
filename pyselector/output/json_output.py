@@ -14,6 +14,7 @@ from pyselector.model.rectangle import RectangleInfo
 from pyselector.model.selector_candidate import SelectorCandidate, SelectorEvaluation, SelectorStep
 from pyselector.model.target_window import TargetWindowInfo
 from pyselector.model.window_summary import WindowSummary, WindowsResult
+from pyselector.record.model import Recording, RecordedStep
 from pyselector.server import session
 from pyselector.wait import WaitOutcome
 
@@ -77,10 +78,37 @@ def _wait_to_dict(outcome: WaitOutcome | None) -> dict[str, object]:
     return {"waited": outcome.rounded, "attempts": outcome.attempts, "timed_out": outcome.timed_out}
 
 
+def format_recording_json(
+    command: str,
+    recording: Recording | None,
+    extra: dict[str, object] | None = None,
+) -> str:
+    payload: dict[str, object] = {
+        "recording": recording.to_dict() if recording is not None else None,
+        "steps": len(recording.steps) if recording is not None else 0,
+    }
+    payload.update(extra or {})
+    return _dump(_envelope(command, "success", payload))
+
+
+def _recorded_to_dict(step: RecordedStep | None) -> dict[str, object] | None:
+    """記録された手順の要約。何が残ったかをその場で確認できるようにする。"""
+    if step is None:
+        return None
+    return {
+        "seq": step.seq,
+        "kind": step.kind,
+        "action": step.action,
+        "selector": step.selector.to_dict() if step.selector else None,
+        "selector_warning": step.selector_warning,
+    }
+
+
 def format_expect_result_json(
     result: ExpectResult,
     compact: bool = False,
     outcome: WaitOutcome | None = None,
+    recorded: RecordedStep | None = None,
 ) -> str:
     """判定の結果を返す。
 
@@ -104,12 +132,17 @@ def format_expect_result_json(
                     _find_result_to_dict(item, compact, with_state=True) for item in result.results
                 ],
                 **_wait_to_dict(outcome),
+                "recorded": _recorded_to_dict(recorded),
             },
         )
     )
 
 
-def format_act_result_json(result: ActResult, outcome: WaitOutcome | None = None) -> str:
+def format_act_result_json(
+    result: ActResult,
+    outcome: WaitOutcome | None = None,
+    recorded: RecordedStep | None = None,
+) -> str:
     point = result.point
     payload: dict[str, object] = {
         "action": result.action,
@@ -129,6 +162,7 @@ def format_act_result_json(result: ActResult, outcome: WaitOutcome | None = None
             "attempts": outcome.attempts,
             "timed_out": outcome.timed_out,
         }
+    payload["recorded"] = _recorded_to_dict(recorded)
     if result.diff is not None:
         payload["diff"] = _backend_diff_to_dict(result.diff)
     return _dump(_envelope("act", result.status, payload))

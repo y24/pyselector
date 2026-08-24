@@ -89,16 +89,23 @@ def search_elements(
     with_selectors: bool = False,
     with_state: bool = False,
     progress: bool | None = None,
+    inspectors: dict[str, object] | None = None,
 ) -> list[FindResult]:
     """条件に一致する要素を backend ごとに集める。
 
     find と expect が共有する。状態の読み取りは ``--limit`` を適用した後に行い、
     走査した全要素ではなく出力する要素だけを対象にする（設計 11 §3.2）。
+
+    ``inspectors`` を渡すと、使った inspector を backend ごとに書き戻す。要素の
+    内部参照は inspector が保持しているため、あとで同じ要素を扱う処理（記録など）は
+    必ずこれと同じ inspector を使う必要がある。作り直すと参照表が空になる。
     """
     options = _selector_options_from_args(args)
     results: list[FindResult] = []
     for backend in backends:
         inspector = common._create_inspector(backend)
+        if inspectors is not None:
+            inspectors[backend] = inspector
         try:
             root = _resolve_find_root(inspector, backend, args, log)
             log(f"{backend}: 要素を走査中です... (depth={args.depth}, max-items={args.max_items})")
