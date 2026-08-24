@@ -4,6 +4,7 @@ from argparse import Namespace
 import pytest
 
 from pyselector import inspect_runner
+from pyselector.commands import common as command_common
 from pyselector.model.element_info import ElementInfo
 from pyselector.model.rectangle import RectangleInfo
 
@@ -66,11 +67,11 @@ def _args(**overrides):
 @pytest.fixture(autouse=True)
 def process_names(monkeypatch):
     names = {11: "CalculatorApp.exe", 22: "notepad.exe", 33: "explorer.exe"}
-    monkeypatch.setattr(inspect_runner, "get_process_name", lambda pid: names.get(pid))
+    monkeypatch.setattr(command_common, "get_process_name", lambda pid: names.get(pid))
 
 
 def _run(monkeypatch, capsys, inspector, args):
-    monkeypatch.setattr(inspect_runner, "_create_inspector", lambda backend: inspector)
+    monkeypatch.setattr(command_common, "_create_inspector", lambda backend: inspector)
     result = inspect_runner.run_windows(args)
     return result, capsys.readouterr().out
 

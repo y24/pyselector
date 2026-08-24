@@ -2,6 +2,7 @@ import json
 from argparse import Namespace
 
 from pyselector import inspect_runner
+from pyselector.commands import common as command_common
 from pyselector.backends.common import read_state_values
 from pyselector.model.element_info import ElementInfo
 from pyselector.model.rectangle import RectangleInfo
@@ -137,8 +138,8 @@ def _find_args(**overrides):
 
 def test_find_does_not_read_state_by_default(monkeypatch, capsys):
     inspector = FakeStateInspector([_element("a"), _element("b")])
-    monkeypatch.setattr(inspect_runner, "_create_inspector", lambda backend: inspector)
-    monkeypatch.setattr(inspect_runner, "setup_dpi_awareness", lambda: None)
+    monkeypatch.setattr(command_common, "_create_inspector", lambda backend: inspector)
+    monkeypatch.setattr(command_common, "setup_dpi_awareness", lambda: None)
 
     inspect_runner.run_find(_find_args())
     payload = json.loads(capsys.readouterr().out)
@@ -150,8 +151,8 @@ def test_find_does_not_read_state_by_default(monkeypatch, capsys):
 def test_with_state_reads_only_the_listed_matches(monkeypatch, capsys):
     """状態の取得コストは走査量ではなく出力量に比例させる（設計 11 §3.2）。"""
     inspector = FakeStateInspector([_element(f"e{index}") for index in range(5)])
-    monkeypatch.setattr(inspect_runner, "_create_inspector", lambda backend: inspector)
-    monkeypatch.setattr(inspect_runner, "setup_dpi_awareness", lambda: None)
+    monkeypatch.setattr(command_common, "_create_inspector", lambda backend: inspector)
+    monkeypatch.setattr(command_common, "setup_dpi_awareness", lambda: None)
 
     inspect_runner.run_find(_find_args(with_state=True, limit=2))
     payload = json.loads(capsys.readouterr().out)

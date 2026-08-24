@@ -4,6 +4,7 @@ from argparse import Namespace
 import pytest
 
 from pyselector import inspect_runner
+from pyselector.commands import common as command_common
 from pyselector.cli import build_parser
 from pyselector.model.element_info import ElementInfo
 from pyselector.model.rectangle import RectangleInfo
@@ -203,8 +204,8 @@ def _find_args(**overrides):
 
 
 def _run_find(monkeypatch, capsys, inspector, **overrides):
-    monkeypatch.setattr(inspect_runner, "_create_inspector", lambda backend: inspector)
-    monkeypatch.setattr(inspect_runner, "setup_dpi_awareness", lambda: None)
+    monkeypatch.setattr(command_common, "_create_inspector", lambda backend: inspector)
+    monkeypatch.setattr(command_common, "setup_dpi_awareness", lambda: None)
     exit_code = inspect_runner.run_find(_find_args(**overrides))
     return exit_code, json.loads(capsys.readouterr().out)
 
@@ -318,8 +319,8 @@ def _act_args(**overrides):
 
 def test_act_without_settle_does_not_poll_the_tree(monkeypatch, capsys):
     inspector = FakeSettleInspector(["a", "b", "c"])
-    monkeypatch.setattr(inspect_runner, "_create_inspector", lambda backend: inspector)
-    monkeypatch.setattr(inspect_runner, "setup_dpi_awareness", lambda: None)
+    monkeypatch.setattr(command_common, "_create_inspector", lambda backend: inspector)
+    monkeypatch.setattr(command_common, "setup_dpi_awareness", lambda: None)
 
     inspect_runner.run_act(_act_args())
     payload = json.loads(capsys.readouterr().out)
@@ -330,8 +331,8 @@ def test_act_without_settle_does_not_poll_the_tree(monkeypatch, capsys):
 
 def test_settle_waits_until_the_tree_stops_changing(monkeypatch, capsys):
     inspector = FakeSettleInspector(["a", "b", "b"])
-    monkeypatch.setattr(inspect_runner, "_create_inspector", lambda backend: inspector)
-    monkeypatch.setattr(inspect_runner, "setup_dpi_awareness", lambda: None)
+    monkeypatch.setattr(command_common, "_create_inspector", lambda backend: inspector)
+    monkeypatch.setattr(command_common, "setup_dpi_awareness", lambda: None)
 
     inspect_runner.run_act(_act_args(settle=5))
     payload = json.loads(capsys.readouterr().out)
@@ -343,8 +344,8 @@ def test_settle_waits_until_the_tree_stops_changing(monkeypatch, capsys):
 def test_settle_reuses_its_last_snapshot_for_the_diff(monkeypatch, capsys):
     """待った後にもう一度取り直すと、待った意味が薄れるうえ走査が 1 回増える。"""
     inspector = FakeSettleInspector(["before", "after", "after"])
-    monkeypatch.setattr(inspect_runner, "_create_inspector", lambda backend: inspector)
-    monkeypatch.setattr(inspect_runner, "setup_dpi_awareness", lambda: None)
+    monkeypatch.setattr(command_common, "_create_inspector", lambda backend: inspector)
+    monkeypatch.setattr(command_common, "setup_dpi_awareness", lambda: None)
 
     inspect_runner.run_act(_act_args(settle=5, diff=True))
     payload = json.loads(capsys.readouterr().out)
@@ -388,8 +389,8 @@ def _expect_args(**overrides):
 
 def test_expect_wait_retries_until_the_expectation_holds(monkeypatch, capsys):
     inspector = FakeWaitInspector([[], [], [_element()]])
-    monkeypatch.setattr(inspect_runner, "_create_inspector", lambda backend: inspector)
-    monkeypatch.setattr(inspect_runner, "setup_dpi_awareness", lambda: None)
+    monkeypatch.setattr(command_common, "_create_inspector", lambda backend: inspector)
+    monkeypatch.setattr(command_common, "setup_dpi_awareness", lambda: None)
 
     exit_code = inspect_runner.run_expect(_expect_args(wait=5))
     payload = json.loads(capsys.readouterr().out)
@@ -407,8 +408,8 @@ def test_expect_wait_stops_retrying_a_search_that_cannot_run(monkeypatch, capsys
             raise RuntimeError("ウィンドウがありません")
 
     inspector = Broken([[]])
-    monkeypatch.setattr(inspect_runner, "_create_inspector", lambda backend: inspector)
-    monkeypatch.setattr(inspect_runner, "setup_dpi_awareness", lambda: None)
+    monkeypatch.setattr(command_common, "_create_inspector", lambda backend: inspector)
+    monkeypatch.setattr(command_common, "setup_dpi_awareness", lambda: None)
 
     exit_code = inspect_runner.run_expect(_expect_args(wait=5))
     payload = json.loads(capsys.readouterr().out)

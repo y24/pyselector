@@ -5,6 +5,8 @@ from pathlib import Path
 import pytest
 
 from pyselector import cli, inspect_runner
+from pyselector.commands import common as command_common
+from pyselector.commands import inspect as inspect_command
 from pyselector.model.element_info import ElementInfo
 from pyselector.model.hierarchy import HierarchyNode
 from pyselector.model.inspection_result import BackendInspection, CursorPosition, InspectionResult, TreeResult
@@ -239,8 +241,8 @@ def test_version_text_output_is_unchanged(capsys):
 
 def test_inspect_json_still_saves_a_log_file(monkeypatch, capsys):
     saved = []
-    monkeypatch.setattr(inspect_runner, "save_inspection_log", lambda result, content, **kwargs: saved.append(kwargs))
-    monkeypatch.setattr(inspect_runner, "_create_inspector", lambda backend: _FailingInspector())
+    monkeypatch.setattr(inspect_command, "save_inspection_log", lambda result, content, **kwargs: saved.append(kwargs))
+    monkeypatch.setattr(command_common, "_create_inspector", lambda backend: _FailingInspector())
 
     inspect_runner.run_inspect(
         Namespace(

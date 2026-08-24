@@ -4,6 +4,7 @@ from argparse import Namespace
 import pytest
 
 from pyselector import inspect_runner
+from pyselector.commands import common as command_common
 from pyselector.model.element_info import ElementInfo
 from pyselector.model.hierarchy import HierarchyNode
 from pyselector.model.rectangle import RectangleInfo
@@ -107,7 +108,7 @@ def _args(**overrides):
 
 
 def _run(monkeypatch, capsys, inspector, args):
-    monkeypatch.setattr(inspect_runner, "_create_inspector", lambda backend: inspector)
+    monkeypatch.setattr(command_common, "_create_inspector", lambda backend: inspector)
     result = inspect_runner.run_find(args)
     return result, capsys.readouterr().out
 
@@ -265,7 +266,7 @@ def test_find_with_selectors_uses_the_element_center_for_evaluation(monkeypatch,
         captured.update(kwargs)
         return []
 
-    monkeypatch.setattr(inspect_runner, "evaluate_candidates", fake_evaluate)
+    monkeypatch.setattr(command_common, "evaluate_candidates", fake_evaluate)
 
     _run(monkeypatch, capsys, inspector, _args(with_selectors=True))
 

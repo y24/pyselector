@@ -5,6 +5,8 @@ from pathlib import Path
 import pytest
 
 from pyselector import inspect_runner
+from pyselector.commands import common as command_common
+from pyselector.commands import inspect as inspect_command
 from pyselector.model.element_info import ElementInfo
 from pyselector.model.hierarchy import HierarchyNode
 from pyselector.model.inspection_result import CursorPosition
@@ -14,7 +16,7 @@ from pyselector.model.target_window import TargetWindowInfo
 
 @pytest.fixture(autouse=True)
 def disable_inspect_log_file(monkeypatch):
-    monkeypatch.setattr(inspect_runner, "save_inspection_log", lambda *args, **kwargs: None)
+    monkeypatch.setattr(inspect_command, "save_inspection_log", lambda *args, **kwargs: None)
 
 
 class FailingInspector:
@@ -87,7 +89,7 @@ class TreeInspector:
 
 def test_inspect_cancel_returns_without_creating_inspector(monkeypatch, capsys):
     created = []
-    monkeypatch.setattr(inspect_runner, "_create_inspector", lambda backend: created.append(backend))
+    monkeypatch.setattr(command_common, "_create_inspector", lambda backend: created.append(backend))
 
     result = inspect_runner.run_inspect(
         Namespace(delay=0, timeout=12, backend="uia", detail=False, scope="window", only_visible=False, max_items=None),
@@ -102,10 +104,10 @@ def test_inspect_cancel_returns_without_creating_inspector(monkeypatch, capsys):
 
 def test_inspect_uses_overlay_when_delay_is_not_specified(monkeypatch, capsys):
     calls = []
-    monkeypatch.setattr(inspect_runner, "select_point_with_overlay", lambda: calls.append("overlay") or (10, 20))
-    monkeypatch.setattr(inspect_runner, "wait_with_countdown", lambda delay, color=False: calls.append("countdown"))
-    monkeypatch.setattr(inspect_runner, "get_cursor_position", lambda: calls.append("cursor") or CursorPosition(30, 40))
-    monkeypatch.setattr(inspect_runner, "_create_inspector", lambda backend: FailingInspector())
+    monkeypatch.setattr(inspect_command, "select_point_with_overlay", lambda: calls.append("overlay") or (10, 20))
+    monkeypatch.setattr(command_common, "wait_with_countdown", lambda delay, color=False: calls.append("countdown"))
+    monkeypatch.setattr(command_common, "get_cursor_position", lambda: calls.append("cursor") or CursorPosition(30, 40))
+    monkeypatch.setattr(command_common, "_create_inspector", lambda backend: FailingInspector())
 
     result = inspect_runner.run_inspect(
         Namespace(delay=None, timeout=12, backend="uia", detail=False, scope="window", only_visible=False, max_items=None)
@@ -118,10 +120,10 @@ def test_inspect_uses_overlay_when_delay_is_not_specified(monkeypatch, capsys):
 
 def test_inspect_uses_countdown_when_delay_is_specified(monkeypatch, capsys):
     calls = []
-    monkeypatch.setattr(inspect_runner, "select_point_with_overlay", lambda: calls.append("overlay") or (10, 20))
-    monkeypatch.setattr(inspect_runner, "wait_with_countdown", lambda delay, color=False: calls.append(("countdown", delay)))
-    monkeypatch.setattr(inspect_runner, "get_cursor_position", lambda: calls.append("cursor") or CursorPosition(30, 40))
-    monkeypatch.setattr(inspect_runner, "_create_inspector", lambda backend: FailingInspector())
+    monkeypatch.setattr(inspect_command, "select_point_with_overlay", lambda: calls.append("overlay") or (10, 20))
+    monkeypatch.setattr(command_common, "wait_with_countdown", lambda delay, color=False: calls.append(("countdown", delay)))
+    monkeypatch.setattr(command_common, "get_cursor_position", lambda: calls.append("cursor") or CursorPosition(30, 40))
+    monkeypatch.setattr(command_common, "_create_inspector", lambda backend: FailingInspector())
 
     result = inspect_runner.run_inspect(
         Namespace(delay=5, timeout=12, backend="uia", detail=False, scope="window", only_visible=False, max_items=None)
@@ -134,9 +136,9 @@ def test_inspect_uses_countdown_when_delay_is_specified(monkeypatch, capsys):
 
 
 def test_inspect_does_not_log_timeout_before_countdown(monkeypatch, capsys):
-    monkeypatch.setattr(inspect_runner, "wait_with_countdown", lambda delay, color=False: None)
-    monkeypatch.setattr(inspect_runner, "get_cursor_position", lambda: CursorPosition(10, 20))
-    monkeypatch.setattr(inspect_runner, "_create_inspector", lambda backend: FailingInspector())
+    monkeypatch.setattr(command_common, "wait_with_countdown", lambda delay, color=False: None)
+    monkeypatch.setattr(command_common, "get_cursor_position", lambda: CursorPosition(10, 20))
+    monkeypatch.setattr(command_common, "_create_inspector", lambda backend: FailingInspector())
 
     result = inspect_runner.run_inspect(
         Namespace(delay=5, timeout=12, backend="uia", detail=False, scope="window", only_visible=False, max_items=None),
@@ -152,9 +154,9 @@ def test_inspect_does_not_log_timeout_before_countdown(monkeypatch, capsys):
 
 
 def test_inspect_logs_loaded_config_after_start(monkeypatch, capsys):
-    monkeypatch.setattr(inspect_runner, "wait_with_countdown", lambda delay, color=False: None)
-    monkeypatch.setattr(inspect_runner, "get_cursor_position", lambda: CursorPosition(10, 20))
-    monkeypatch.setattr(inspect_runner, "_create_inspector", lambda backend: FailingInspector())
+    monkeypatch.setattr(command_common, "wait_with_countdown", lambda delay, color=False: None)
+    monkeypatch.setattr(command_common, "get_cursor_position", lambda: CursorPosition(10, 20))
+    monkeypatch.setattr(command_common, "_create_inspector", lambda backend: FailingInspector())
 
     result = inspect_runner.run_inspect(
         Namespace(
@@ -181,9 +183,9 @@ def test_inspect_logs_loaded_config_after_start(monkeypatch, capsys):
 
 def test_inspect_does_not_evaluate_control_type_only_candidate(monkeypatch, capsys):
     inspector = ControlTypeOnlyInspector()
-    monkeypatch.setattr(inspect_runner, "wait_with_countdown", lambda delay, color=False: None)
-    monkeypatch.setattr(inspect_runner, "get_cursor_position", lambda: CursorPosition(10, 20))
-    monkeypatch.setattr(inspect_runner, "_create_inspector", lambda backend: inspector)
+    monkeypatch.setattr(command_common, "wait_with_countdown", lambda delay, color=False: None)
+    monkeypatch.setattr(command_common, "get_cursor_position", lambda: CursorPosition(10, 20))
+    monkeypatch.setattr(command_common, "_create_inspector", lambda backend: inspector)
 
     result = inspect_runner.run_inspect(
         Namespace(delay=0, timeout=12, backend="uia", detail=False, scope="window", only_visible=False, max_items=None),
@@ -197,9 +199,9 @@ def test_inspect_does_not_evaluate_control_type_only_candidate(monkeypatch, caps
 
 def test_inspect_does_not_evaluate_class_name_only_candidate(monkeypatch, capsys):
     inspector = ClassNameOnlyInspector()
-    monkeypatch.setattr(inspect_runner, "wait_with_countdown", lambda delay, color=False: None)
-    monkeypatch.setattr(inspect_runner, "get_cursor_position", lambda: CursorPosition(10, 20))
-    monkeypatch.setattr(inspect_runner, "_create_inspector", lambda backend: inspector)
+    monkeypatch.setattr(command_common, "wait_with_countdown", lambda delay, color=False: None)
+    monkeypatch.setattr(command_common, "get_cursor_position", lambda: CursorPosition(10, 20))
+    monkeypatch.setattr(command_common, "_create_inspector", lambda backend: inspector)
 
     result = inspect_runner.run_inspect(
         Namespace(delay=0, timeout=12, backend="win32", detail=False, scope="window", only_visible=False, max_items=None),
@@ -224,16 +226,16 @@ def test_inspect_logs_hit_candidate_count_after_evaluation(monkeypatch, capsys):
         SelectorEvaluation(candidate=candidate, hits=None, status="timeout"),
     ]
 
-    monkeypatch.setattr(inspect_runner, "wait_with_countdown", lambda delay, color=False: None)
-    monkeypatch.setattr(inspect_runner, "get_cursor_position", lambda: CursorPosition(10, 20))
-    monkeypatch.setattr(inspect_runner, "_create_inspector", lambda backend: SuccessfulInspector(backend))
-    monkeypatch.setattr(inspect_runner, "generate_candidates", lambda element, hierarchy: [candidate, candidate, candidate])
-    monkeypatch.setattr(inspect_runner, "evaluate_candidates", lambda *args, **kwargs: evaluations)
-    monkeypatch.setattr(inspect_runner, "append_found_index_candidates", lambda candidates, evaluations, element: candidates)
-    monkeypatch.setattr(inspect_runner, "sort_candidates", lambda candidates: candidates)
-    monkeypatch.setattr(inspect_runner, "deduplicate_candidates", lambda candidates: candidates)
-    monkeypatch.setattr(inspect_runner, "attach_warnings", lambda evaluations, element, detail: None)
-    monkeypatch.setattr(inspect_runner, "build_code_snippet", lambda backend, target_window, evaluations: "")
+    monkeypatch.setattr(command_common, "wait_with_countdown", lambda delay, color=False: None)
+    monkeypatch.setattr(command_common, "get_cursor_position", lambda: CursorPosition(10, 20))
+    monkeypatch.setattr(command_common, "_create_inspector", lambda backend: SuccessfulInspector(backend))
+    monkeypatch.setattr(command_common, "generate_candidates", lambda element, hierarchy: [candidate, candidate, candidate])
+    monkeypatch.setattr(command_common, "evaluate_candidates", lambda *args, **kwargs: evaluations)
+    monkeypatch.setattr(command_common, "append_found_index_candidates", lambda candidates, evaluations, element: candidates)
+    monkeypatch.setattr(command_common, "sort_candidates", lambda candidates: candidates)
+    monkeypatch.setattr(command_common, "deduplicate_candidates", lambda candidates: candidates)
+    monkeypatch.setattr(command_common, "attach_warnings", lambda evaluations, element, detail: None)
+    monkeypatch.setattr(command_common, "build_code_snippet", lambda backend, target_window, evaluations: "")
 
     result = inspect_runner.run_inspect(
         Namespace(delay=0, timeout=12, backend="both", detail=False, scope="window", only_visible=False, max_items=None),
@@ -250,10 +252,10 @@ def test_inspect_logs_hit_candidate_count_after_evaluation(monkeypatch, capsys):
 def test_inspect_log_file_omits_cursor_line(monkeypatch, capsys):
     saved = []
 
-    monkeypatch.setattr(inspect_runner, "wait_with_countdown", lambda delay, color=False: None)
-    monkeypatch.setattr(inspect_runner, "get_cursor_position", lambda: CursorPosition(10, 20))
-    monkeypatch.setattr(inspect_runner, "_create_inspector", lambda backend: SuccessfulInspector(backend))
-    monkeypatch.setattr(inspect_runner, "save_inspection_log", lambda result, content, **kwargs: saved.append(content))
+    monkeypatch.setattr(command_common, "wait_with_countdown", lambda delay, color=False: None)
+    monkeypatch.setattr(command_common, "get_cursor_position", lambda: CursorPosition(10, 20))
+    monkeypatch.setattr(command_common, "_create_inspector", lambda backend: SuccessfulInspector(backend))
+    monkeypatch.setattr(inspect_command, "save_inspection_log", lambda result, content, **kwargs: saved.append(content))
 
     result = inspect_runner.run_inspect(
         Namespace(delay=0, timeout=12, backend="win32", detail=False, scope="window", only_visible=False, max_items=None),
@@ -278,15 +280,15 @@ def test_inspect_json_outputs_structured_data_without_info(monkeypatch, capsys):
     )
     evaluations = [SelectorEvaluation(candidate=candidate, hits=1, warnings=["ambiguous text"])]
 
-    monkeypatch.setattr(inspect_runner, "_create_inspector", lambda backend: SuccessfulInspector(backend))
-    monkeypatch.setattr(inspect_runner, "generate_candidates", lambda element, hierarchy: [candidate])
-    monkeypatch.setattr(inspect_runner, "evaluate_candidates", lambda *args, **kwargs: evaluations)
-    monkeypatch.setattr(inspect_runner, "append_found_index_candidates", lambda candidates, evaluations, element: candidates)
-    monkeypatch.setattr(inspect_runner, "sort_candidates", lambda candidates: candidates)
-    monkeypatch.setattr(inspect_runner, "deduplicate_candidates", lambda candidates: candidates)
-    monkeypatch.setattr(inspect_runner, "attach_warnings", lambda evaluations, element, detail: None)
-    monkeypatch.setattr(inspect_runner, "build_code_snippet", lambda backend, target_window, evaluations: "print('ok')")
-    monkeypatch.setattr(inspect_runner, "save_inspection_log", lambda result, content, **kwargs: saved.append((content, kwargs)))
+    monkeypatch.setattr(command_common, "_create_inspector", lambda backend: SuccessfulInspector(backend))
+    monkeypatch.setattr(command_common, "generate_candidates", lambda element, hierarchy: [candidate])
+    monkeypatch.setattr(command_common, "evaluate_candidates", lambda *args, **kwargs: evaluations)
+    monkeypatch.setattr(command_common, "append_found_index_candidates", lambda candidates, evaluations, element: candidates)
+    monkeypatch.setattr(command_common, "sort_candidates", lambda candidates: candidates)
+    monkeypatch.setattr(command_common, "deduplicate_candidates", lambda candidates: candidates)
+    monkeypatch.setattr(command_common, "attach_warnings", lambda evaluations, element, detail: None)
+    monkeypatch.setattr(command_common, "build_code_snippet", lambda backend, target_window, evaluations: "print('ok')")
+    monkeypatch.setattr(inspect_command, "save_inspection_log", lambda result, content, **kwargs: saved.append((content, kwargs)))
 
     result = inspect_runner.run_inspect(
         Namespace(delay=0, timeout=12, backend="win32", detail=False, scope="window", only_visible=False, max_items=None, json=True),
@@ -333,14 +335,14 @@ def test_inspect_adds_parent_found_index_fallback_when_no_single_hit(monkeypatch
             for candidate in candidates
         ]
 
-    monkeypatch.setattr(inspect_runner, "wait_with_countdown", lambda delay, color=False: None)
-    monkeypatch.setattr(inspect_runner, "get_cursor_position", lambda: CursorPosition(10, 20))
-    monkeypatch.setattr(inspect_runner, "_create_inspector", lambda backend: SuccessfulInspector(backend))
-    monkeypatch.setattr(inspect_runner, "generate_candidates", fake_generate_candidates)
-    monkeypatch.setattr(inspect_runner, "evaluate_candidates", fake_evaluate_candidates)
-    monkeypatch.setattr(inspect_runner, "append_found_index_candidates", lambda candidates, evaluations, element: candidates)
-    monkeypatch.setattr(inspect_runner, "attach_warnings", lambda evaluations, element, detail: None)
-    monkeypatch.setattr(inspect_runner, "build_code_snippet", lambda backend, target_window, evaluations: "")
+    monkeypatch.setattr(command_common, "wait_with_countdown", lambda delay, color=False: None)
+    monkeypatch.setattr(command_common, "get_cursor_position", lambda: CursorPosition(10, 20))
+    monkeypatch.setattr(command_common, "_create_inspector", lambda backend: SuccessfulInspector(backend))
+    monkeypatch.setattr(command_common, "generate_candidates", fake_generate_candidates)
+    monkeypatch.setattr(command_common, "evaluate_candidates", fake_evaluate_candidates)
+    monkeypatch.setattr(command_common, "append_found_index_candidates", lambda candidates, evaluations, element: candidates)
+    monkeypatch.setattr(command_common, "attach_warnings", lambda evaluations, element, detail: None)
+    monkeypatch.setattr(command_common, "build_code_snippet", lambda backend, target_window, evaluations: "")
 
     result = inspect_runner.run_inspect(
         Namespace(delay=0, timeout=12, backend="uia", detail=False, scope="window", only_visible=False, max_items=None),
@@ -364,7 +366,7 @@ def test_failed_parent_found_index_trial_is_excluded_from_results():
     )
     evaluation = SelectorEvaluation(candidate=candidate, hits=None, status="timeout")
 
-    assert inspect_runner._exclude_unmatched_evaluations([evaluation]) == []
+    assert command_common._exclude_unmatched_evaluations([evaluation]) == []
 
 
 def test_failed_uia_parent_found_index_trial_is_excluded_from_results():
@@ -378,11 +380,11 @@ def test_failed_uia_parent_found_index_trial_is_excluded_from_results():
     )
     evaluation = SelectorEvaluation(candidate=candidate, hits=None, status="timeout")
 
-    assert inspect_runner._exclude_unmatched_evaluations([evaluation]) == []
+    assert command_common._exclude_unmatched_evaluations([evaluation]) == []
 
 
 def test_tree_backend_both_prints_win32_and_uia(monkeypatch, capsys):
-    monkeypatch.setattr(inspect_runner, "_create_inspector", lambda backend: TreeInspector(backend))
+    monkeypatch.setattr(command_common, "_create_inspector", lambda backend: TreeInspector(backend))
 
     result = inspect_runner.run_tree(
         Namespace(
@@ -406,7 +408,7 @@ def test_tree_backend_both_prints_win32_and_uia(monkeypatch, capsys):
 
 
 def test_tree_logs_progress_messages(monkeypatch, capsys):
-    monkeypatch.setattr(inspect_runner, "_create_inspector", lambda backend: TreeInspector(backend))
+    monkeypatch.setattr(command_common, "_create_inspector", lambda backend: TreeInspector(backend))
 
     result = inspect_runner.run_tree(
         Namespace(
@@ -434,7 +436,7 @@ def test_tree_logs_progress_messages(monkeypatch, capsys):
 
 
 def test_tree_json_outputs_structured_data_without_info(monkeypatch, capsys):
-    monkeypatch.setattr(inspect_runner, "_create_inspector", lambda backend: TreeInspector(backend))
+    monkeypatch.setattr(command_common, "_create_inspector", lambda backend: TreeInspector(backend))
 
     result = inspect_runner.run_tree(
         Namespace(
@@ -504,10 +506,10 @@ def _inspect_args(**overrides):
 def test_inspect_at_skips_overlay_and_countdown(monkeypatch, capsys):
     calls = []
     inspector = HandleInspector("win32")
-    monkeypatch.setattr(inspect_runner, "select_point_with_overlay", lambda: calls.append("overlay") or (0, 0))
-    monkeypatch.setattr(inspect_runner, "wait_with_countdown", lambda delay, color=False: calls.append("countdown"))
-    monkeypatch.setattr(inspect_runner, "get_cursor_position", lambda: calls.append("cursor"))
-    monkeypatch.setattr(inspect_runner, "_create_inspector", lambda backend: inspector)
+    monkeypatch.setattr(inspect_command, "select_point_with_overlay", lambda: calls.append("overlay") or (0, 0))
+    monkeypatch.setattr(command_common, "wait_with_countdown", lambda delay, color=False: calls.append("countdown"))
+    monkeypatch.setattr(command_common, "get_cursor_position", lambda: calls.append("cursor"))
+    monkeypatch.setattr(command_common, "_create_inspector", lambda backend: inspector)
 
     result = inspect_runner.run_inspect(_inspect_args(at=(636, 2240)))
 
@@ -521,10 +523,10 @@ def test_inspect_at_skips_overlay_and_countdown(monkeypatch, capsys):
 def test_inspect_handle_resolves_the_element_by_handle(monkeypatch, capsys):
     calls = []
     inspector = HandleInspector("win32")
-    monkeypatch.setattr(inspect_runner, "select_point_with_overlay", lambda: calls.append("overlay") or (0, 0))
-    monkeypatch.setattr(inspect_runner, "wait_with_countdown", lambda delay, color=False: calls.append("countdown"))
-    monkeypatch.setattr(inspect_runner, "_window_center", lambda handle: (50, 60))
-    monkeypatch.setattr(inspect_runner, "_create_inspector", lambda backend: inspector)
+    monkeypatch.setattr(inspect_command, "select_point_with_overlay", lambda: calls.append("overlay") or (0, 0))
+    monkeypatch.setattr(command_common, "wait_with_countdown", lambda delay, color=False: calls.append("countdown"))
+    monkeypatch.setattr(inspect_command, "_window_center", lambda handle: (50, 60))
+    monkeypatch.setattr(command_common, "_create_inspector", lambda backend: inspector)
 
     result = inspect_runner.run_inspect(_inspect_args(handle=0x2E20F46, json=True))
 
@@ -539,8 +541,8 @@ def test_inspect_handle_resolves_the_element_by_handle(monkeypatch, capsys):
 
 def test_inspect_handle_falls_back_to_a_window_only_snippet(monkeypatch, capsys):
     inspector = HandleInspector("win32")
-    monkeypatch.setattr(inspect_runner, "_window_center", lambda handle: (50, 60))
-    monkeypatch.setattr(inspect_runner, "_create_inspector", lambda backend: inspector)
+    monkeypatch.setattr(inspect_command, "_window_center", lambda handle: (50, 60))
+    monkeypatch.setattr(command_common, "_create_inspector", lambda backend: inspector)
 
     result = inspect_runner.run_inspect(_inspect_args(handle=100, json=True))
 
@@ -556,7 +558,7 @@ def test_inspect_handle_falls_back_to_a_window_only_snippet(monkeypatch, capsys)
 
 def test_inspect_child_element_without_candidates_keeps_a_null_snippet(monkeypatch, capsys):
     inspector = HandleInspector("win32")
-    monkeypatch.setattr(inspect_runner, "_create_inspector", lambda backend: inspector)
+    monkeypatch.setattr(command_common, "_create_inspector", lambda backend: inspector)
 
     result = inspect_runner.run_inspect(_inspect_args(at=(1, 2), json=True))
 
@@ -576,7 +578,7 @@ def test_tree_uses_the_window_handle_when_given(monkeypatch, capsys):
             return ElementInfo(backend=self.backend, window_text="電卓", handle=handle)
 
     inspector = HandleTreeInspector("uia")
-    monkeypatch.setattr(inspect_runner, "_create_inspector", lambda backend: inspector)
+    monkeypatch.setattr(command_common, "_create_inspector", lambda backend: inspector)
 
     result = inspect_runner.run_tree(
         Namespace(
@@ -601,7 +603,7 @@ def test_tree_uses_the_window_handle_when_given(monkeypatch, capsys):
 
 
 def test_tree_progress_logger_reports_every_item(capsys):
-    logger = inspect_runner._tree_progress_logger("uia", color=False)
+    logger = command_common._tree_progress_logger("uia", color=False)
 
     for done in range(1, 4):
         logger(done, 50)

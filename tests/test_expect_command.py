@@ -4,6 +4,7 @@ from argparse import Namespace
 import pytest
 
 from pyselector import inspect_runner
+from pyselector.commands import common as command_common
 from pyselector.cli import build_parser
 from pyselector.model.element_info import ElementInfo
 from pyselector.model.rectangle import RectangleInfo
@@ -100,8 +101,8 @@ def _args(**overrides):
 
 
 def _run(monkeypatch, capsys, inspector, **overrides):
-    monkeypatch.setattr(inspect_runner, "_create_inspector", lambda backend: inspector)
-    monkeypatch.setattr(inspect_runner, "setup_dpi_awareness", lambda: None)
+    monkeypatch.setattr(command_common, "_create_inspector", lambda backend: inspector)
+    monkeypatch.setattr(command_common, "setup_dpi_awareness", lambda: None)
     exit_code = inspect_runner.run_expect(_args(**overrides))
     return exit_code, json.loads(capsys.readouterr().out)
 
@@ -221,8 +222,8 @@ def test_disabled_uses_is_enabled_without_reading_state(monkeypatch, capsys):
 def test_several_matches_stop_a_state_expectation(monkeypatch, capsys):
     inspector = FakeExpectInspector(elements=[_element(ref="a"), _element(ref="b")])
 
-    monkeypatch.setattr(inspect_runner, "_create_inspector", lambda backend: inspector)
-    monkeypatch.setattr(inspect_runner, "setup_dpi_awareness", lambda: None)
+    monkeypatch.setattr(command_common, "_create_inspector", lambda backend: inspector)
+    monkeypatch.setattr(command_common, "setup_dpi_awareness", lambda: None)
     with pytest.raises(AmbiguousTargetError):
         inspect_runner.run_expect(_args(expectation="checked"))
 
@@ -239,8 +240,8 @@ def test_several_matches_are_fine_for_exists(monkeypatch, capsys):
 def test_index_out_of_range_is_a_targeting_error(monkeypatch, capsys):
     inspector = FakeExpectInspector(elements=[_element(ref="a")])
 
-    monkeypatch.setattr(inspect_runner, "_create_inspector", lambda backend: inspector)
-    monkeypatch.setattr(inspect_runner, "setup_dpi_awareness", lambda: None)
+    monkeypatch.setattr(command_common, "_create_inspector", lambda backend: inspector)
+    monkeypatch.setattr(command_common, "setup_dpi_awareness", lambda: None)
     with pytest.raises(ElementNotFoundError):
         inspect_runner.run_expect(_args(expectation="checked", index=5))
 

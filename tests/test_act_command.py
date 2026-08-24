@@ -4,6 +4,7 @@ from argparse import Namespace
 import pytest
 
 from pyselector import inspect_runner
+from pyselector.commands import common as command_common
 from pyselector.model.element_info import ElementInfo
 from pyselector.model.hierarchy import HierarchyNode
 from pyselector.model.rectangle import RectangleInfo
@@ -115,7 +116,7 @@ def _args(**overrides):
 
 
 def _run(monkeypatch, capsys, inspector, args):
-    monkeypatch.setattr(inspect_runner, "_create_inspector", lambda backend: inspector)
+    monkeypatch.setattr(command_common, "_create_inspector", lambda backend: inspector)
     result = inspect_runner.run_act(args)
     return result, capsys.readouterr().out
 
@@ -139,7 +140,7 @@ def test_act_clicks_the_single_matching_element(monkeypatch, capsys):
 
 def test_act_requires_the_env_permission(monkeypatch, capsys):
     inspector = FakeActInspector()
-    monkeypatch.setattr(inspect_runner, "_create_inspector", lambda backend: inspector)
+    monkeypatch.setattr(command_common, "_create_inspector", lambda backend: inspector)
 
     with pytest.raises(ActionNotAllowedError) as error:
         inspect_runner.run_act(_args(auto_id="num5Button", env_allow_actions=False))
@@ -151,7 +152,7 @@ def test_act_requires_the_env_permission(monkeypatch, capsys):
 
 def test_act_requires_the_allow_actions_flag(monkeypatch, capsys):
     inspector = FakeActInspector()
-    monkeypatch.setattr(inspect_runner, "_create_inspector", lambda backend: inspector)
+    monkeypatch.setattr(command_common, "_create_inspector", lambda backend: inspector)
 
     with pytest.raises(ActionNotAllowedError) as error:
         inspect_runner.run_act(_args(auto_id="num5Button", allow_actions=False))
@@ -181,7 +182,7 @@ def test_dry_run_resolves_the_target_without_acting(monkeypatch, capsys):
 
 def test_act_refuses_an_ambiguous_target(monkeypatch, capsys):
     inspector = FakeActInspector()
-    monkeypatch.setattr(inspect_runner, "_create_inspector", lambda backend: inspector)
+    monkeypatch.setattr(command_common, "_create_inspector", lambda backend: inspector)
 
     with pytest.raises(AmbiguousTargetError) as error:
         inspect_runner.run_act(_args(control_type="Button"))
@@ -204,7 +205,7 @@ def test_index_selects_among_several_matches(monkeypatch, capsys):
 
 def test_index_out_of_range_is_rejected(monkeypatch, capsys):
     inspector = FakeActInspector()
-    monkeypatch.setattr(inspect_runner, "_create_inspector", lambda backend: inspector)
+    monkeypatch.setattr(command_common, "_create_inspector", lambda backend: inspector)
 
     with pytest.raises(ElementNotFoundError) as error:
         inspect_runner.run_act(_args(control_type="Button", index=9))
@@ -215,7 +216,7 @@ def test_index_out_of_range_is_rejected(monkeypatch, capsys):
 
 def test_no_match_is_rejected(monkeypatch, capsys):
     inspector = FakeActInspector()
-    monkeypatch.setattr(inspect_runner, "_create_inspector", lambda backend: inspector)
+    monkeypatch.setattr(command_common, "_create_inspector", lambda backend: inspector)
 
     with pytest.raises(ElementNotFoundError):
         inspect_runner.run_act(_args(auto_id="存在しない"))
@@ -249,7 +250,7 @@ def test_send_keys_passes_the_value(monkeypatch, capsys):
 
 def test_action_failure_propagates(monkeypatch, capsys):
     inspector = FakeActInspector(action_error=ActionFailedError("boom"))
-    monkeypatch.setattr(inspect_runner, "_create_inspector", lambda backend: inspector)
+    monkeypatch.setattr(command_common, "_create_inspector", lambda backend: inspector)
 
     with pytest.raises(ActionFailedError):
         inspect_runner.run_act(_args(auto_id="num5Button"))
