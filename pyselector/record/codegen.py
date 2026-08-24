@@ -194,6 +194,14 @@ def _step_lines(step: RecordedStep) -> list[str]:
         lines.append(f"{selector}.{_call(step)}")
         return lines
     if step.kind == "close":
+        if step.action == "force_close":
+            # --force で記録されたものを close() にすると、意味が変わったまま静かに通る。
+            lines.append("# --force として記録された。ウィンドウではなくプロセスを終了する。")
+            lines.append(
+                f'Application(backend="{step.backend}")'
+                f".connect(handle={selector}.wrapper_object().handle).kill()"
+            )
+            return lines
         lines.append(f"{selector}.close()")
         return lines
     lines.extend(_expect_lines(step, selector))

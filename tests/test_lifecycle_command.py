@@ -318,3 +318,45 @@ def test_an_unknown_app_key_is_rejected(tmp_path, monkeypatch):
 
     with pytest.raises(ArgumentError):
         load_config()
+
+
+def test_launch_prefers_a_window_that_was_not_there_before(monkeypatch, capsys):
+    """同じアプリが既に開いていると、タイトルの正規表現だけでは古い方を掴む。"""
+    old = _window(title="既存 - メモ帳", handle=0x111)
+    inspector = FakeLifecycleInspector(windows=[old])
+
+    def fake_start(plan):
+        inspector.windows = [old, _window(title="タイトルなし - メモ帳", handle=0x222)]
+        return 4242
+
+    monkeypatch.setattr(lifecycle, "_start", fake_start)
+
+    exit_code, payload = _run(monkeypatch, capsys, lifecycle.run_launch, inspector, _launch_args())
+
+    assert exit_code == 0
+    assert payload["window"]["handle"] == 0x222
+
+
+def test_a_reused_window_is_still_accepted(monkeypatch, capsys):
+    """新しいウィンドウを出さず既存を再利用するアプリもある。"""
+    old = _window(title="既存 - メモ帳", handle=0x111)
+    inspector = FakeLifecycleInspector(windows=[old])
+    monkeypatch.setattr(lifecycle, "_start", lambda plan: 4242)
+
+    exit_code, payload = _run(monkeypatch, capsys, lifecycle.run_launch, inspector, _launch_args())
+
+    assert exit_code == 0
+    assert payload["window"]["handle"] == 0x111
+
+
+def test_a_forced_close_does_not_generate_a_plain_close(monkeypatch, capsys):
+    """--force を close() にすると、意味が変わったまま静かに通ってしまう。"""
+    inspector = FakeLifecycleInspector(windows=[_window()])
+    monkeypatch.setattr(lifecycle, "_terminate", lambda pid: None)
+    store.start("強制終了")
+
+    _run(monkeypatch, capsys, lifecycle.run_close, inspector, _close_args(force=True))
+
+    code = emit_pytest(store.load())
+    assert ".kill()" in code
+    assert "window.close()" not in code

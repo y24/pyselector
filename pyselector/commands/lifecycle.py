@@ -4,7 +4,7 @@ import os
 import re
 import subprocess
 from argparse import Namespace
-from typing import Any, Callable
+from typing import Any
 
 from pyselector.commands import common
 from pyselector.commands.common import (
@@ -55,9 +55,12 @@ def run_launch(args: Namespace) -> int:
             log(f"{backend}: 既に起動しています。接続しました。")
 
     if window is None and not dry_run:
+        # 起動前のウィンドウを控えておく。同じアプリが既に開いていると、タイトルの
+        # 正規表現だけでは古いウィンドウを掴んでしまう。
+        existing = _window_handles(inspector)
         log(f"{backend}: 起動します... {plan['exe']}")
         pid = _start(plan)
-        window, outcome = _wait_for_window(inspector, plan, pid, args, log)
+        window, outcome = _wait_for_window(inspector, plan, pid, args, existing)
         if window is None:
             raise TargetWindowNotFoundError(
                 f"起動しましたが（pid={pid}）、{plan['timeout']}秒以内に対象ウィンドウが現れませんでした。"
@@ -192,37 +195,60 @@ def _wait_for_window(
     plan: dict[str, Any],
     pid: int,
     args: Namespace,
-    log: Callable[[str], None],
+    existing: set[int] | None = None,
 ):
     return poll_until(
-        lambda: _find_window(inspector, plan, pid),
+        lambda: _find_window(inspector, plan, pid, existing),
         lambda window: window is not None,
         timeout=plan["timeout"],
         poll_interval=getattr(args, "poll_interval", DEFAULT_POLL_INTERVAL),
     )
 
 
-def _find_window(inspector: Any, plan: dict[str, Any], pid: int | None) -> ElementInfo | None:
+def _window_handles(inspector: Any) -> set[int]:
+    try:
+        return {window.handle for window in inspector.list_windows(True) if window.handle is not None}
+    except Exception:
+        return set()
+
+
+def _find_window(
+    inspector: Any,
+    plan: dict[str, Any],
+    pid: int | None,
+    existing: set[int] | None = None,
+) -> ElementInfo | None:
     """対象の主ウィンドウを探す。
 
     タイトルの正規表現が指定されていればそれを正とする。指定が無いときだけ、
     起動したプロセス ID に望みを託す。calc.exe のように別プロセスがウィンドウを
     出すアプリでは pid が一致しないため、正規表現のほうが確実である。
+
+    同じアプリが既に開いていると正規表現だけでは古いウィンドウにも一致するため、
+    ``existing``（起動前のウィンドウ）に無いものを優先する。新しいものが 1 つも
+    無ければ、既存のウィンドウを再利用したとみなして一致の先頭を返す。
     """
     pattern = plan.get("window_title_re")
     try:
         windows = inspector.list_windows(True)
     except Exception:
         return None
+
+    matched: list[ElementInfo] = []
     for window in windows:
         title = window.window_text or ""
         if pattern:
             if title and re.search(pattern, title):
-                return window
+                matched.append(window)
             continue
         if pid is not None and window.process_id == pid and title:
-            return window
-    return None
+            matched.append(window)
+
+    if existing:
+        fresh = [window for window in matched if window.handle not in existing]
+        if fresh:
+            return fresh[0]
+    return matched[0] if matched else None
 
 
 def _terminate(pid: int) -> None:
